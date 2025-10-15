@@ -4,14 +4,17 @@ from rest_framework.routers import DefaultRouter
 
 from wardrobe.api import BrandViewSet, CategoryViewSet, ItemViewSet, StoreViewSet, PurchaseViewSet
 
+from wardrobe import views
+
 router = DefaultRouter()
-router.register(r'brands', BrandViewSet)
-router.register(r'categories', CategoryViewSet)
-router.register(r'items', ItemViewSet)
-router.register(r'stores', StoreViewSet)
-router.register(r'purchases', PurchaseViewSet)
+router.register('brands', BrandViewSet, basename="brand")
+router.register('categories', CategoryViewSet, basename="category")
+router.register('items', ItemViewSet, basename="item")
+router.register('stores', StoreViewSet, basename="store")
+router.register('purchases', PurchaseViewSet, basename="purchase")
 
 urlpatterns = [
+    path('', views.ShowItemView.as_view()),
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
 ]

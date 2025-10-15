@@ -4,36 +4,30 @@ from .models import Brand, Category, Item, Store, Purchase
 class BrandSerializer(serializers.ModelSerializer):
     class Meta:
         model = Brand
-        fields = ["id", "name", "description"]
+        fields = "__all__"
 
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
-        fields = ["id", "name"]
+        fields = "__all__"
 
 class ItemSerializer(serializers.ModelSerializer):
-    brand = BrandSerializer(read_only=True)
-    category = CategorySerializer(read_only=True)
+    brand = serializers.PrimaryKeyRelatedField(queryset=Brand.objects.all())
+    category = serializers.PrimaryKeyRelatedField(queryset=Category.objects.all())
 
     class Meta:
         model = Item
-        fields = ["id", "name", "color", "brand", "category"]
+        fields = "__all__"
 
 class StoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = Store
-        fields = ["id", "name", "address"]
+        fields = "__all__"
 
 class PurchaseSerializer(serializers.ModelSerializer):
-    item = ItemSerializer(read_only=True)
-    store = StoreSerializer(read_only=True)
-    item_id = serializers.PrimaryKeyRelatedField(
-        queryset=Item.objects.all(), source="item", write_only=True
-    )
-    store_id = serializers.PrimaryKeyRelatedField(
-        queryset=Store.objects.all(), source="store", write_only=True
-    )
+    item = serializers.PrimaryKeyRelatedField(queryset=Item.objects.all())
+    store = serializers.PrimaryKeyRelatedField(queryset=Store.objects.all())
 
     class Meta:
         model = Purchase
-        fields = ["id", "item", "store", "item_id", "store_id", "amount", "date"]
+        fields = "__all__"
