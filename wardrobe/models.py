@@ -1,28 +1,30 @@
 from django.db import models
 
 class Brand(models.Model):
-    name = models.TextField("Название бренда")
-    description = models.TextField("Описание")
+    name = models.CharField(max_length=100)
+    description = models.TextField()
+    picture = models.ImageField("Логотип", null=True, blank=True, upload_to="brands")
 
     def __str__(self):
         return self.name
 
 
 class Category(models.Model):
-    name = models.TextField("Название категории")
+    name = models.CharField(max_length=100)
 
     def __str__(self):
         return self.name
 
 
 class Item(models.Model):
-    name = models.TextField("Название вещи")
-    color = models.TextField("Цвет")
-    brand = models.ForeignKey(Brand, on_delete=models.CASCADE, null=True)
-    category = models.ForeignKey(Category, on_delete=models.CASCADE, null=True)
+    name = models.CharField(max_length=100)
+    color = models.CharField(max_length=50)
+    brand = models.ForeignKey('Brand', on_delete=models.CASCADE, null=True, blank=True)
+    category = models.ForeignKey(Category, on_delete=models.CASCADE)
+    picture = models.ImageField("Фото вещи", null=True, blank=True, upload_to="items")
 
     def __str__(self):
-        return f"{self.name} ({self.color})"
+        return self.name
 
 
 class Store(models.Model):

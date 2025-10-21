@@ -23,6 +23,9 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      'media': {
+        target: 'http://localhost:8000'
+      },
     },
   },
 })
