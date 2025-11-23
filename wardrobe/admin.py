@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Brand, Category, Item, Store, Purchase
+from .models import Brand, ClothingType, Buyer, Store, Purchase
 
 
 @admin.register(Brand)
@@ -7,14 +7,14 @@ class BrandAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "description")
 
 
-@admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
-    list_display = ("id", "name",)
+@admin.register(ClothingType)
+class ClothingTypeAdmin(admin.ModelAdmin):
+    list_display = ("id", "name")
 
 
-@admin.register(Item)
-class ItemAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "color", "brand", "category")
+@admin.register(Buyer)
+class BuyerAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "phone")
 
 
 @admin.register(Store)
@@ -24,5 +24,4 @@ class StoreAdmin(admin.ModelAdmin):
 
 @admin.register(Purchase)
 class PurchaseAdmin(admin.ModelAdmin):
-    list_display = ("id", "item", "store", "amount", "date")
-
+    list_display = ("id", "buyer", "brand", "clothing_type", "store", "amount", "date")
