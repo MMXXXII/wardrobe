@@ -1,27 +1,41 @@
 from django.contrib import admin
-from .models import Brand, ClothingType, Buyer, Store, Purchase
+from .models import Category, Store, Product, Customer, Order, UserProfile
 
-
-@admin.register(Brand)
-class BrandAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "description")
-
-
-@admin.register(ClothingType)
-class ClothingTypeAdmin(admin.ModelAdmin):
-    list_display = ("id", "name")
-
-
-@admin.register(Buyer)
-class BuyerAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "phone")
+@admin.register(Category)
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "user")
+    list_filter = ("user",)
 
 
 @admin.register(Store)
 class StoreAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "address")
+    list_display = ("id", "name", "address", "user")
+    list_filter = ("user",)
 
 
-@admin.register(Purchase)
-class PurchaseAdmin(admin.ModelAdmin):
-    list_display = ("id", "buyer", "brand", "clothing_type", "store", "amount", "date")
+@admin.register(Product)
+class ProductAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "category", "store", "size", "price", "get_user")
+    list_filter = ("category", "store")
+
+    def get_user(self, obj):
+        return obj.user.username if obj.user else "-"
+    get_user.short_description = "Пользователь"
+
+
+
+@admin.register(Customer)
+class CustomerAdmin(admin.ModelAdmin):
+    list_display = ("id", "first_name", "last_name", "store", "user")
+    list_filter = ("store", "user")
+
+
+@admin.register(Order)
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ("id", "product", "customer", "status", "quantity", "total_price", "user")
+    list_filter = ("status", "product", "customer")
+
+
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "age", "address")

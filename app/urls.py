@@ -7,29 +7,29 @@ from django.conf.urls.static import static
 
 from rest_framework.routers import DefaultRouter
 from wardrobe.api import (
-    BrandViewSet,
-    ClothingTypeViewSet,
-    BuyerViewSet,
+    CategoryViewSet,
+    ProductViewSet,
+    CustomerViewSet,
     StoreViewSet,
-    PurchaseViewSet,
+    OrderViewSet,
+    UserProfileViewSet
 )
-from wardrobe.views import UserProfileViewSet
 from wardrobe import views
 
 # создаём роутер DRF
 router = DefaultRouter()
-router.register("brands", BrandViewSet, basename="brand")
-router.register("clothing-types", ClothingTypeViewSet, basename="clothingtype")
-router.register("buyers", BuyerViewSet, basename="buyer")
+router.register("categories", CategoryViewSet, basename="category")
+router.register("products", ProductViewSet, basename="product")
+router.register("customers", CustomerViewSet, basename="customer")
 router.register("stores", StoreViewSet, basename="store")
-router.register("purchases", PurchaseViewSet, basename="purchase")
-router.register("userprofile", UserProfileViewSet, basename="userprofile")
+router.register("orders", OrderViewSet, basename="order")
+router.register("userprofiles", UserProfileViewSet, basename="userprofile")
 
 urlpatterns = [
-    path('', views.ShowStoreView.as_view()),  # главная страница магазина
+    path('', views.ShowStoreView.as_view(), name="home"),  # главная страница магазина
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
-    path('api/', include('rest_framework.urls')),  # для DRF login/logout
+    path('api-auth/', include('rest_framework.urls')),  # для DRF login/logout
 ]
 
 # добавляем статические файлы и медиа в DEBUG

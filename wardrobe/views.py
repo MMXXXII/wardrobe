@@ -1,6 +1,6 @@
 from django.views.generic import TemplateView
 from typing import Any
-from rest_framework.viewsets import GenericViewSet, ModelViewSet
+from rest_framework.viewsets import GenericViewSet
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated, BasePermission
@@ -11,7 +11,8 @@ import random
 import string
 from rest_framework import serializers
 
-from wardrobe.models import Brand, ClothingType, Store, Buyer, Purchase
+from wardrobe.models import Category, Store, Product, Customer, Order, UserProfile
+
 
 # -----------------------------
 # Главная страница магазина
@@ -21,7 +22,8 @@ class ShowStoreView(TemplateView):
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        context['brands'] = Brand.objects.all()
+        # Показываем категории вместо брендов
+        context['categories'] = Category.objects.all()
         return context
 
 # -----------------------------
@@ -60,7 +62,10 @@ class UserProfileViewSet(GenericViewSet):
     def use_login(self, request):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = authenticate(username=serializer.validated_data['username'], password=serializer.validated_data['password'])
+        user = authenticate(
+            username=serializer.validated_data['username'],
+            password=serializer.validated_data['password']
+        )
         if user:
             otp_code = ''.join(random.choices(string.digits, k=6))
             cache.set(
@@ -68,9 +73,9 @@ class UserProfileViewSet(GenericViewSet):
                 {'otp_code': otp_code, 'timestamp': time.time(), 'password': serializer.validated_data['password']}, 
                 300
             )
-            print(f'[v0] OTP код для {user.username}: {otp_code}')
-            return Response({'is_authenticated': False,'username': user.username,'email': user.email,'otp_sent': True})
-        return Response({'is_authenticated': False,'error': 'Неверные учетные данные'}, status=400)
+            print(f'[OTP] Код для {user.username}: {otp_code}')
+            return Response({'is_authenticated': False, 'username': user.username, 'email': user.email, 'otp_sent': True})
+        return Response({'is_authenticated': False, 'error': 'Неверные учетные данные'}, status=400)
 
     @action(detail=False, url_path='otp-login', methods=['POST'], serializer_class=OTPSerializer, permission_classes=[])
     def otp_login(self, request):

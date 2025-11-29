@@ -1,6 +1,7 @@
 <template>
-  <div class="brands-page">
-    <div class="header-stats">
+  <div class="buyers-page">
+    <!-- Заголовок + статистика + кнопки экспорта -->
+    <div class="header-stats mb-4">
       <h2>Бренды</h2>
       <div class="stats-and-buttons">
         <div class="stats-cards">
@@ -20,20 +21,23 @@
       </div>
     </div>
 
-    <form @submit.prevent="onAdd" class="add-form">
+    <!-- Форма добавления -->
+    <form @submit.prevent="onAdd" class="add-form mb-4">
       <input v-model="toAdd.name" placeholder="Название бренда" required />
       <input v-model="toAdd.description" placeholder="Описание" required />
       <input type="file" @change="onFileChange($event, toAdd)" />
       <button type="submit" class="btn-add">Добавить</button>
     </form>
 
-    <div class="filters">
+    <!-- Фильтры -->
+    <div class="filters mb-4">
       <input v-model="filterName" placeholder="Фильтр по названию" />
       <input v-model="filterDescription" placeholder="Фильтр по описанию" />
     </div>
 
+    <!-- Сетка карточек брендов -->
     <div class="cards-grid">
-      <div v-for="b in filteredBrands" :key="b.id" class="brand-card">
+      <div v-for="b in filteredBrands" :key="b.id" class="buyer-card">
         <h4>{{ b.name }}</h4>
         <p>{{ b.description }}</p>
         <img v-if="b.image" :src="b.image" class="brand-image" @click="openImageModal(b.image)" />
@@ -48,11 +52,12 @@
       </div>
     </div>
 
+    <!-- Модальное окно редактирования -->
     <div class="modal fade" id="editBrandModal" tabindex="-1">
       <div class="modal-dialog">
         <div class="modal-content">
           <div class="modal-header">
-            <h5>Редактировать бренд</h5>
+            <h5 class="modal-title">Редактировать бренд</h5>
             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
           </div>
           <div class="modal-body">
@@ -71,6 +76,7 @@
       </div>
     </div>
 
+    <!-- Модальное окно просмотра изображения -->
     <div class="modal fade" id="imageModal" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content">
@@ -94,15 +100,16 @@ const brands = ref([])
 const brandStats = ref({})
 const toAdd = ref({ name: '', description: '', image: null })
 const toEdit = ref({ id: null, name: '', description: '', image: null })
-
 const filterName = ref('')
 const filterDescription = ref('')
 const currentImage = ref(null)
 
-const filteredBrands = computed(() => brands.value.filter(b =>
-  b.name.toLowerCase().includes(filterName.value.toLowerCase()) &&
-  b.description.toLowerCase().includes(filterDescription.value.toLowerCase())
-))
+const filteredBrands = computed(() =>
+  brands.value.filter(b =>
+    b.name.toLowerCase().includes(filterName.value.toLowerCase()) &&
+    b.description.toLowerCase().includes(filterDescription.value.toLowerCase())
+  )
+)
 
 function onFileChange(event, target) {
   const file = event.target.files[0]
@@ -188,7 +195,7 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.brands-page {
+.buyers-page {
   background: #ffffff;
   padding: 25px;
   border-radius: 15px;
@@ -201,15 +208,11 @@ h2 { color: #d63384; margin-bottom: 10px; }
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
   gap: 15px;
+  flex-wrap: wrap;
 }
 
-.stats-cards {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
+.stats-cards { display: flex; gap: 10px; flex-wrap: wrap; }
 .stat-card {
   background: #fff0f5;
   padding: 4px 10px;
@@ -220,10 +223,7 @@ h2 { color: #d63384; margin-bottom: 10px; }
   box-shadow: 0 2px 6px rgba(255,105,180,0.15);
 }
 
-.export-buttons {
-  display: flex;
-  gap: 10px;
-}
+.export-buttons { display: flex; gap: 10px; }
 .btn-export {
   font-weight: bold;
   border-radius: 15px;
@@ -238,20 +238,18 @@ h2 { color: #d63384; margin-bottom: 10px; }
 
 .add-form {
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  flex-wrap: wrap;
-  align-items: center;
-  margin-bottom: 20px;
 }
 .add-form input[type="text"],
 .add-form input[type="file"] {
-  flex: 1;
+  width: 100%;
   padding: 10px;
   border-radius: 15px;
   border: 1px solid #ffb6c1;
   background-color: #fff0f5;
+  box-sizing: border-box;
 }
-
 .btn-add {
   background: #ff1493;
   color: white;
@@ -259,18 +257,17 @@ h2 { color: #d63384; margin-bottom: 10px; }
   border-radius: 15px;
   padding: 8px 16px;
   cursor: pointer;
-  height: 42px;
+  align-self: flex-start;
 }
 .btn-add:hover { background: #ff69b4; }
 
 .filters {
   display: flex;
+  flex-direction: column;
   gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 20px;
 }
 .filters input {
-  flex: 1;
+  width: 100%;
   padding: 10px;
   border-radius: 15px;
   border: 1px solid #ffb6c1;
@@ -279,10 +276,11 @@ h2 { color: #d63384; margin-bottom: 10px; }
 
 .cards-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: 20px;
 }
-.brand-card {
+
+.buyer-card {
   background: #fff0f5;
   border: 1px solid #ffb6c1;
   border-radius: 15px;
@@ -290,27 +288,13 @@ h2 { color: #d63384; margin-bottom: 10px; }
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  box-shadow: 0 6px 15px rgba(255,105,180,0.1);
+  box-shadow: 0 6px 15px rgba(255, 105, 180, 0.1);
 }
-.brand-card h4 { color: #d63384; margin-bottom: 8px; }
-.brand-card p { flex: 1; color: #4b1a30; margin-bottom: 12px; }
-.brand-image {
-  width: 100%;
-  border-radius: 10px;
-  margin-bottom: 10px;
-  cursor: pointer;
-}
-.edit-image-preview img {
-  width: 100%;
-  border-radius: 10px;
-  cursor: pointer;
-}
+.buyer-card h4 { color: #d63384; margin-bottom: 8px; }
+.buyer-card p { color: #4b1a30; margin-bottom: 12px; }
+.brand-image { width: 100%; border-radius: 8px; margin-bottom: 6px; cursor: pointer; }
 
-.card-buttons {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
+.card-buttons { display: flex; justify-content: flex-end; gap: 8px; }
 .btn-edit, .btn-delete {
   border-radius: 15px;
   padding: 6px 10px;
@@ -324,5 +308,14 @@ h2 { color: #d63384; margin-bottom: 10px; }
 .btn-delete { background: #dc3545; }
 .btn-delete:hover { background: #c82333; }
 
-.modal-content input { width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 15px; border: 1px solid #ffb6c1; background-color: #fff0f5; }
+.modal-content input[type="text"],
+.modal-content input[type="file"] {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 10px;
+  border-radius: 15px;
+  border: 1px solid #ffb6c1;
+  background-color: #fff0f5;
+}
+.edit-image-preview img { width: 100%; border-radius: 8px; cursor: pointer; }
 </style>
