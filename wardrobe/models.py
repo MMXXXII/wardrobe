@@ -28,7 +28,6 @@ class Store(models.Model):
     def __str__(self) -> str:
         return self.name
 
-
 class Product(models.Model):
     """Товар/Одежда (аналог Book)"""
     SIZE_CHOICES = [
@@ -48,6 +47,7 @@ class Product(models.Model):
     color = models.CharField("Цвет", max_length=50, null=True, blank=True)
     image = models.ImageField("Фото товара", upload_to="products", null=True, blank=True)
     description = models.TextField("Описание", null=True, blank=True)
+    quantity = models.PositiveIntegerField("Количество", default=0)  # Добавляем поле для количества товара
 
     class Meta:
         verbose_name = "Товар"
@@ -58,7 +58,8 @@ class Product(models.Model):
     
     def is_available(self):
         """Проверяет, доступен ли товар для покупки (не продан)"""
-        return not Order.objects.filter(product=self, status='sold').exists()
+        return self.quantity > 0  # Изменено на проверку количества товара
+
 
 
 class Customer(models.Model):
@@ -96,6 +97,7 @@ class Order(models.Model):
     quantity = models.PositiveIntegerField("Количество", default=1)
     total_price = models.DecimalField("Общая сумма", max_digits=10, decimal_places=2, default=0.00)
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Пользователь")
+    total = models.DecimalField("Общая сумма", max_digits=10, decimal_places=2, default=0.00)
 
     class Meta:
         verbose_name = "Заказ"
@@ -105,10 +107,21 @@ class Order(models.Model):
         return f"{self.product} → {self.customer} ({self.status})"
     
     def save(self, *args, **kwargs):
-        """Автоматически рассчитываем общую стоимость"""
+        """Автоматически рассчитываем общую стоимость и проверяем наличие товара"""
         if self.product:
+            # Проверка на достаточность товара на складе
+            if self.quantity > self.product.quantity:
+                raise ValueError(f"Недостаточно товара на складе: доступно только {self.product.quantity} единиц.")
+
+            # Рассчитываем общую стоимость заказа
             self.total_price = self.product.price * self.quantity
+            # Уменьшаем количество товара на складе
+            self.product.quantity -= self.quantity
+            self.product.save()
+
         super().save(*args, **kwargs)
+
+
 
 
 class UserProfile(models.Model):

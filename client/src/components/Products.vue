@@ -88,14 +88,16 @@
             <input v-model.number="toAdd.price" type="number" step="0.01" placeholder="Цена (₽)" class="input-elegant"
               required />
             <input v-model="toAdd.color" placeholder="Цвет" class="input-elegant" />
+            <input v-model.number="toAdd.quantity" type="number" placeholder="Количество" class="input-elegant"
+              required />
           </div>
-
           <div class="form-row file-row">
             <input type="file" @change="onFileChange" accept="image/*" class="file-input" />
             <button type="submit" class="btn-add-elegant">
               <i class="bi bi-plus-circle"></i> Добавить товар
             </button>
           </div>
+
         </form>
       </div>
     </div>
@@ -156,8 +158,10 @@
           <div class="product-meta">
             <span class="meta-category">{{ p.category_name }}</span>
             <span class="meta-store">{{ p.store_name }}</span>
+            <span class="product-quantity">Количество: {{ p.quantity }}</span>
           </div>
           <div class="product-price">{{ p.price }} ₽</div>
+          
         </div>
 
         <!-- КНОПКИ СПРАВА -->
@@ -356,30 +360,32 @@ async function fetchProductStats() {
 
 async function onAdd() {
   try {
-    const formData = new FormData()
-    formData.append('name', toAdd.name)
-    formData.append('category', toAdd.category)
-    formData.append('store', toAdd.store)
-    formData.append('size', toAdd.size)
-    formData.append('price', toAdd.price)
-    if (toAdd.color) formData.append('color', toAdd.color)
-    if (toAdd.image) formData.append('image', toAdd.image)
+    const formData = new FormData();
+    formData.append('name', toAdd.name);
+    formData.append('category', toAdd.category);
+    formData.append('store', toAdd.store);
+    formData.append('size', toAdd.size);
+    formData.append('price', toAdd.price);
+    formData.append('quantity', toAdd.quantity);  // Убедитесь, что количество передается
+    if (toAdd.color) formData.append('color', toAdd.color);
+    if (toAdd.image) formData.append('image', toAdd.image);
 
-    await axios.post('/products/', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+    await axios.post('/products/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 
     // Очистка формы
-    Object.assign(toAdd, { name: '', category: '', store: '', size: 'M', price: 0, color: '', image: null })
+    Object.assign(toAdd, { name: '', category: '', store: '', size: 'M', price: 0, color: '', quantity: 0, image: null });
 
     // Сброс input file
-    const fileInput = document.querySelector('.file-input')
-    if (fileInput) fileInput.value = ''
+    const fileInput = document.querySelector('.file-input');
+    if (fileInput) fileInput.value = '';
 
-    await Promise.all([fetchAll(), fetchProductStats()])
-    showNotification('✨ Товар добавлен!', 'success')
+    await Promise.all([fetchAll(), fetchProductStats()]);
+    showNotification('✨ Товар добавлен!', 'success');
   } catch (err) {
-    handleApiError(err, 'Ошибка при добавлении')
+    handleApiError(err, 'Ошибка при добавлении');
   }
 }
+
 
 
 async function onRemove(p) {
@@ -409,9 +415,9 @@ async function onUpdate() {
     formData.append('store', toEdit.store)
     formData.append('size', toEdit.size)
     formData.append('price', toEdit.price)
+    formData.append('quantity', toEdit.quantity)  // Добавлено поле для количества
     if (toEdit.color) formData.append('color', toEdit.color)
     if (toEdit.newImageFile) formData.append('image', toEdit.newImageFile)
-
 
     await axios.put(`/products/${toEdit.id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
     await Promise.all([fetchAll(), fetchProductStats()])
@@ -421,6 +427,7 @@ async function onUpdate() {
     handleApiError(err, 'Ошибка при обновлении')
   }
 }
+
 
 async function exportExcel() {
   try {

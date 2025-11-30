@@ -44,7 +44,8 @@ class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
         fields = ['id', 'name', 'category', 'category_name', 'store', 'store_name', 
-                  'size', 'price', 'color', 'image', 'description']
+                  'size', 'price', 'color', 'image', 'description', 'quantity']  # Добавлено поле quantity
+
         
 # -----------------------------
 # Сериализаторы для покупателей
@@ -119,38 +120,38 @@ class OrderSerializer(serializers.ModelSerializer):
         allow_null=True
     )
     order_date = serializers.DateField(format='%Y-%m-%d', input_formats=['%Y-%m-%d'])
+    total_price = serializers.DecimalField(max_digits=10, decimal_places=2, read_only=True)  # Используем только total_price
+    customer_name = serializers.CharField(source='customer.first_name', read_only=True)
+    product_name = serializers.CharField(source='product.name', read_only=True)
     
     class Meta:
         model = Order
-        fields = ['id', 'customer', 'order_date', 'product', 'quantity', 'total']
+        fields = ['id', 'product', 'product_name', 'customer', 'customer_name', 'quantity', 'order_date', 'status', 'total_price']
         read_only_fields = ['id']
     
     def create(self, validated_data):
         request = self.context.get('request')
         user = request.user if request else None
 
-        # Если customer не передан, создаём автоматически для текущего юзера
         if not validated_data.get('customer') and user:
             product = validated_data.get('product')
             customer, _ = Customer.objects.get_or_create(
                 user=user,
-                defaults={'first_name': user.first_name or user.username,
-                          'last_name': user.last_name or '',
-                          # можно добавить другие обязательные поля, например:
-                          # 'store': product.store
-                         }
+                defaults={'first_name': user.first_name or user.username, 'last_name': user.last_name or ''}
             )
             validated_data['customer'] = customer
         
-        return super().create(validated_data)
+        order = super().create(validated_data)
 
-    def update(self, instance, validated_data):
-        # При обновлении проверяем, что product имеет store
-        product = validated_data.get('product', instance.product)
-        if product and not product.store:
-            raise serializers.ValidationError("Product must have a store")
+        # Проверка количества товара
+        product = order.product
+        if product.quantity < order.quantity:
+            raise serializers.ValidationError("Недостаточно товара на складе")
         
-        return super().update(instance, validated_data)
+        product.quantity -= order.quantity
+        product.save()
+
+        return order
 
 
 

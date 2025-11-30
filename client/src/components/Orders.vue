@@ -67,8 +67,11 @@
           </select>
           <select v-model="toAdd.product" class="input-elegant" required>
             <option value="" disabled>Выберите товар</option>
-            <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }} ({{ p.price }} ₽)</option>
+            <option v-for="p in filteredProducts" :key="p.id" :value="p.id">
+              {{ p.name }} ({{ p.price }} ₽)
+            </option>
           </select>
+
           <input v-model.number="toAdd.quantity" type="number" min="1" placeholder="Количество" class="input-elegant"
             required />
           <input v-model="toAdd.order_date" type="date" class="input-elegant" required />
@@ -101,8 +104,8 @@
           <span class="badge" :class="getStatusClass(o.status)">{{ getStatusText(o.status) }}</span>
         </div>
         <div class="order-content">
-          <div class="order-row"><span class="order-label">Товар:</span> {{ o.product?.name }}</div>
-          <div class="order-row"><span class="order-label">Покупатель:</span> {{ o.customer?.first_name }}</div>
+          <div class="order-row"><span class="order-label">Товар:</span> {{ o.product_name }}</div>
+          <div class="order-row"><span class="order-label">Покупатель:</span> {{ o.customer_name }}</div>
           <div class="order-row"><span class="order-label">Количество:</span> {{ o.quantity }} шт</div>
           <div class="order-row order-price"><span class="order-label">Сумма:</span> {{ o.total_price }} ₽</div>
           <div class="order-row text-muted small">Дата заказа: {{ o.order_date }}</div>
@@ -121,6 +124,7 @@
           </button>
         </div>
       </div>
+
     </div>
 
     <!-- Модалка редактирования -->
@@ -213,6 +217,14 @@ const filteredOrders = computed(() =>
   )
 )
 
+const filteredProducts = computed(() => {
+  // Фильтруем товары по выбранному магазину, сравнивая store.id с выбранным store
+  return products.value.filter(p => p.store === toAdd.store)
+})
+
+
+
+
 function getStatusClass(status) {
   const classes = {
     pending: 'bg-warning',
@@ -244,14 +256,21 @@ async function fetchUser() {
 
 async function fetchAll() {
   try {
-    orders.value = (await axios.get('/orders/')).data
-    products.value = (await axios.get('/products/')).data
-    customers.value = (await axios.get('/customers/')).data
-    stores.value = (await axios.get('/stores/')).data
+    const resOrders = await axios.get('/orders/')
+    orders.value = resOrders.data
+    const resProducts = await axios.get('/products/')
+    products.value = resProducts.data
+    const resStores = await axios.get('/stores/')
+    stores.value = resStores.data
+
+    // Выводим данные для отладки
+    console.log('Products:', products.value);
+    console.log('Stores:', stores.value);
   } catch (err) {
     handleApiError(err, 'Не удалось загрузить данные')
   }
 }
+
 
 
 async function fetchOrderStats() {
@@ -262,34 +281,43 @@ async function fetchOrderStats() {
   }
 }
 
-async function onAdd() {
+const onAdd = async () => {
+  const product = filteredProducts.value.find(p => p.id === toAdd.product);
+
+  // Проверка количества товара на фронтенде
+  if (toAdd.quantity > product.quantity) {
+    showNotification(`Недостаточно товара: доступно только ${product.quantity} единиц`, 'danger');
+    return;
+  }
+
+  // Отладочная информация перед отправкой запроса
+  console.log('Sending order data:', {
+    store: toAdd.store,
+    product: toAdd.product,
+    customer: toAdd.customer,
+    quantity: toAdd.quantity,
+    order_date: toAdd.order_date
+  });
+
   try {
-    // POST-запрос на создание заказа
     const res = await axios.post('/orders/', {
       store: toAdd.store,
-      product: toAdd.product,      // ID
-      customer: toAdd.customer,    // ID
+      product: toAdd.product,
+      customer: toAdd.customer,
       quantity: toAdd.quantity,
       order_date: toAdd.order_date
-    })
+    });
 
-    // Обновляем список заказов и статистику
-    await Promise.all([fetchAll(), fetchOrderStats()])
-
-    // Очищаем форму
-    toAdd.store = ''
-    toAdd.product = ''
-    toAdd.customer = ''
-    toAdd.quantity = 1
-    toAdd.order_date = ''
-
-    showNotification('Заказ добавлен', 'success')
-
+    // Обновление данных после успешного добавления заказа
+    await Promise.all([fetchAll(), fetchOrderStats()]);
+    showNotification('Заказ добавлен', 'success');
   } catch (err) {
-    console.log('(DEBUG API ERROR)', err?.response?.data)
-    handleApiError(err, 'Ошибка при добавлении заказа')
+    console.error('Error response:', err?.response?.data);
+    handleApiError(err, 'Ошибка при добавлении заказа');
   }
-}
+};
+
+
 
 
 async function onRemove(o) {
