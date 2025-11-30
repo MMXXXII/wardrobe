@@ -1,162 +1,159 @@
 <template>
-  <div class="profile-container">
-    <!-- Аватарка -->
-    <div class="avatar">
-      <i class="bi bi-person-fill"></i>
-    </div>
+  <div class="profile-page">
+    <div class="profile-card">
+      <div class="profile-header">
+        <div class="profile-icon">
+          <i class="bi bi-person-circle"></i>
+        </div>
+        <h2>{{ user?.username || 'Пользователь' }}</h2>
+      </div>
 
-    <h2>Профиль пользователя</h2>
+      <div class="profile-info">
+        <div class="info-row">
+          <span class="info-label">Имя пользователя:</span>
+          <span class="info-value">{{ user?.username }}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Email:</span>
+          <span class="info-value">{{ user?.email || 'Не указан' }}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Роль:</span>
+          <span class="info-value">
+            <span v-if="user?.is_superuser" class="badge bg-danger">Администратор</span>
+            <span v-else class="badge bg-secondary">Пользователь</span>
+          </span>
+        </div>
+      </div>
 
-    <!-- Загрузка -->
-    <div v-if="userStore.loading" class="loading">Загрузка...</div>
-
-    <!-- Информация о пользователе -->
-    <div v-else-if="userStore.user" class="user-info">
-      <p><strong>Имя пользователя:</strong> {{ userStore.user.username }}</p>
-      <p><strong>Email:</strong> {{ userStore.user.email }}</p>
-
-      <!-- Кнопка Админки для всех -->
-      <a href="http://localhost:5173/admin" class="admin-btn" target="_blank">
-        Админка
-      </a>
-
-      <!-- Кнопка выхода -->
-      <button @click="handleLogout" class="logout-btn">Выход</button>
-    </div>
-
-    <!-- Ошибка -->
-    <div v-else-if="userStore.error" class="error-message">
-      {{ userStore.error }}
+      <div class="profile-actions">
+        <button @click="logout" class="btn-logout">
+          <i class="bi bi-box-arrow-right"></i> Выйти
+        </button>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { useUserStore } from '../stores/userStore.js'
+import { useUserStore } from '../stores/userStore'
+import axios from 'axios'
 
 const router = useRouter()
 const userStore = useUserStore()
+const user = ref(null)
 
-onMounted(() => {
-  if (!userStore.isAuthenticated) {
-    router.push('/login')
-  }
-})
-
-watch(
-  () => userStore.user,
-  (newUser) => {
-    if (!newUser) {
-      router.push('/login')
-    }
-  }
-)
-
-async function handleLogout() {
+async function fetchUser() {
   try {
-    await userStore.logout()
-    router.push('/login')
-  } catch (err) {
-    console.error('Ошибка при выходе:', err)
+    const response = await axios.get('/userprofile/info/')
+    user.value = response.data
+  } catch (error) {
+    console.error('Ошибка загрузки профиля:', error)
   }
 }
+
+async function logout() {
+  if (confirm('Вы уверены, что хотите выйти?')) {
+    await userStore.logout()
+    router.push('/login')
+  }
+}
+
+onMounted(() => {
+  fetchUser()
+})
 </script>
 
 <style scoped>
-.profile-container {
-  max-width: 500px;
-  margin: 40px auto;
-  padding: 35px 25px;
-  border-radius: 20px;
-  background: linear-gradient(145deg, #ffe4ec, #fff0f5);
-  box-shadow: 0 12px 25px rgba(255, 105, 180, 0.2);
-  color: #4b1a30;
-  font-family: 'Arial', sans-serif;
-  text-align: center;
-}
-
-/* Аватарка */
-.avatar {
-  width: 90px;
-  height: 90px;
-  margin: -60px auto 20px;
-  background: linear-gradient(135deg, #ffb6c1, #ff69b4);
-  border-radius: 50%;
+.profile-page {
   display: flex;
   justify-content: center;
   align-items: center;
-  font-size: 2.5rem;
-  color: white;
-  box-shadow: 0 6px 15px rgba(255, 105, 180, 0.3);
-  border: 4px solid white;
+  min-height: 70vh;
+  padding: 25px;
 }
 
-/* Заголовок */
-h2 {
-  margin-bottom: 25px;
+.profile-card {
+  background: #fff0f5;
+  border: 2px solid #ffb6c1;
+  border-radius: 20px;
+  padding: 40px;
+  max-width: 500px;
+  width: 100%;
+  box-shadow: 0 10px 30px rgba(255, 105, 180, 0.2);
+}
+
+.profile-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.profile-icon {
+  font-size: 80px;
+  color: #ff1493;
+  margin-bottom: 15px;
+}
+
+.profile-header h2 {
   color: #d63384;
-  font-weight: bold;
+  margin: 0;
+  font-size: 1.8em;
 }
 
-/* Информация о пользователе */
-.user-info p {
-  padding: 12px 0;
-  border-bottom: 1px solid rgba(255, 192, 203, 0.5);
-  font-size: 16px;
+.profile-info {
+  margin-bottom: 30px;
 }
 
-/* Кнопка Админки */
-.admin-btn {
-  display: inline-block;
-  width: 100%;
-  padding: 12px 0;
-  margin-top: 15px;
-  border-radius: 25px;
+.info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 15px;
+  margin-bottom: 10px;
+  background: white;
+  border-radius: 15px;
+  border: 1px solid #ffb6c1;
+}
+
+.info-label {
   font-weight: bold;
-  font-size: 16px;
-  text-decoration: none;
+  color: #d63384;
+}
+
+.info-value {
+  color: #4b1a30;
+}
+
+.profile-actions {
+  text-align: center;
+}
+
+.btn-logout {
+  background: #dc3545;
   color: white;
-  background: #ff1493;
-  transition: all 0.25s ease;
-}
-
-.admin-btn:hover {
-  background: #ff69b4;
-  box-shadow: 0 6px 15px rgba(255, 20, 147, 0.4);
-}
-
-/* Кнопка выхода */
-.logout-btn {
-  width: 100%;
-  padding: 12px 0;
-  border-radius: 25px;
-  font-weight: bold;
-  font-size: 16px;
-  margin-top: 15px;
-  cursor: pointer;
-  transition: all 0.25s ease;
   border: none;
-  background: #ff6f91;
-  color: white;
-}
-
-.logout-btn:hover {
-  background: #ff4c7d;
-  box-shadow: 0 6px 15px rgba(255, 76, 125, 0.4);
-}
-
-/* Загрузка и ошибка */
-.loading {
+  border-radius: 15px;
+  padding: 12px 30px;
+  font-size: 1.1em;
   font-weight: bold;
-  color: #d63384;
-  padding: 20px;
+  cursor: pointer;
+  transition: all 0.3s;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.error-message {
-  color: #c71585;
-  font-weight: bold;
-  margin-top: 10px;
+.btn-logout:hover {
+  background: #c82333;
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(220, 53, 69, 0.3);
+}
+
+.badge {
+  padding: 6px 12px;
+  border-radius: 10px;
+  font-size: 0.9em;
 }
 </style>

@@ -1,31 +1,23 @@
+// src/router/index.js
 import { createRouter, createWebHistory } from "vue-router"
 import { useUserStore } from "../stores/userStore"
-import Brands from "../components/Brands.vue"
-import ClothingTypes from "../components/ClothingTypes.vue"
-import Buyers from "../components/Buyers.vue"
+
+import Categories from "../components/Categories.vue"
 import Stores from "../components/Stores.vue"
-import Purchases from "../components/Purchases.vue"
+import Products from "../components/Products.vue"
+import Customers from "../components/Customers.vue"
+import Orders from "../components/Orders.vue"
 import Profile from "../components/User.vue"
 import Login from "../components/Login.vue"
 
 const routes = [
   { 
     path: "/", 
-    redirect: "/brands" 
+    redirect: "/categories" 
   },
   { 
-    path: "/brands", 
-    component: Brands,
-    meta: { requiresAuth: true, requiresOtp: true }
-  },
-  { 
-    path: "/clothing-types", 
-    component: ClothingTypes,
-    meta: { requiresAuth: true, requiresOtp: true }
-  },
-  { 
-    path: "/buyers", 
-    component: Buyers,
+    path: "/categories", 
+    component: Categories,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
@@ -34,8 +26,18 @@ const routes = [
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
-    path: "/purchases", 
-    component: Purchases,
+    path: "/products", 
+    component: Products,
+    meta: { requiresAuth: true, requiresOtp: true }
+  },
+  { 
+    path: "/customers", 
+    component: Customers,
+    meta: { requiresAuth: true, requiresOtp: true }
+  },
+  { 
+    path: "/orders", 
+    component: Orders,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
@@ -47,6 +49,23 @@ const routes = [
     path: "/login", 
     component: Login 
   },
+  // Перенаправления для старых путей (опционально)
+  {
+    path: "/brands",
+    redirect: "/categories"
+  },
+  {
+    path: "/clothing-types",
+    redirect: "/categories"
+  },
+  {
+    path: "/buyers",
+    redirect: "/customers"
+  },
+  {
+    path: "/purchases",
+    redirect: "/orders"
+  }
 ]
 
 const router = createRouter({
@@ -62,26 +81,26 @@ router.beforeEach(async (to, from, next) => {
   if (!initialized) {
     initialized = true
     const restored = userStore.initializeFromStorage()
-    console.log('[v0] Store initialized from storage:', restored)
+    console.log('[Store] Initialized from storage:', restored)
   }
   
   if (to.meta.requiresAuth) {
     if (!userStore.isAuthenticated) {
-      console.log('[v0] Not authenticated, redirecting to login')
+      console.log('[Router] Not authenticated, redirecting to login')
       next('/login')
       return
     }
     
     if (to.meta.requiresOtp && !userStore.isOtpVerified) {
-      console.log('[v0] OTP not verified, redirecting to login')
+      console.log('[Router] OTP not verified, redirecting to login')
       next('/login')
       return
     }
     
     next()
   } else if (to.path === '/login' && userStore.isAuthenticated && userStore.isOtpVerified) {
-    console.log('[v0] Already authenticated, redirecting to brands')
-    next('/brands')
+    console.log('[Router] Already authenticated, redirecting to categories')
+    next('/categories')
   } else {
     next()
   }
