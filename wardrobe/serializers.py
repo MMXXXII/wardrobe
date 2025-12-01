@@ -140,11 +140,13 @@ class OrderSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'total_price']
 
+    def _calculate_total(self, product, quantity):
+        return product.price * quantity if product else 0
+
     def create(self, validated_data):
         request = self.context.get('request')
         user = request.user if request else None
         product = validated_data.get('product')
-        store = product.store
         quantity = validated_data.get('quantity', 1)
 
         # Проверка наличия товара
@@ -156,10 +158,9 @@ class OrderSerializer(serializers.ModelSerializer):
         # Создаём или получаем Customer для текущего пользователя и магазина
         if user:
             profile, _ = UserProfile.objects.get_or_create(user=user)
-            
             customer, _ = Customer.objects.get_or_create(
                 user=user,
-                store=store,
+                store=product.store,
                 defaults={
                     'first_name': user.first_name or user.username,
                     'last_name': user.last_name or '',
@@ -168,6 +169,9 @@ class OrderSerializer(serializers.ModelSerializer):
                 }
             )
             validated_data['customer'] = customer
+
+        # Рассчитываем общую сумму
+        validated_data['total_price'] = self._calculate_total(product, quantity)
 
         # Создаем заказ
         order = super().create(validated_data)
@@ -188,7 +192,6 @@ class OrderSerializer(serializers.ModelSerializer):
         new_status = validated_data.get('status', old_status)
         new_quantity = validated_data.get('quantity', old_quantity)
 
-        # --- Логика корректировки товара на складе ---
         # Возвращаем старое количество обратно в старый товар
         if old_status in ['sold', 'pending']:
             old_product.quantity += old_quantity
@@ -203,12 +206,13 @@ class OrderSerializer(serializers.ModelSerializer):
             product.quantity -= new_quantity
             product.save()
 
-        # --- Обновление заказа ---
+        # Обновляем заказ
         instance.product = product
         instance.customer = validated_data.get('customer', instance.customer)
         instance.quantity = new_quantity
         instance.status = new_status
         instance.order_date = validated_data.get('order_date', instance.order_date)
+        instance.total_price = self._calculate_total(product, new_quantity)
         instance.save()
 
         return instance
