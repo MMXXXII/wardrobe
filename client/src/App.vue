@@ -8,12 +8,11 @@
         <div class="nav-left">
           <router-link class="nav-item" to="/categories">Категории</router-link>
           <router-link class="nav-item" to="/products">Товары</router-link>
-
-          <router-link v-if="userStore.user && userStore.user.is_superuser === true" class="nav-item"
-            to="/customers">Покупатели</router-link>
-
-          <router-link class="nav-item" to="/orders">Заказы</router-link>
           <router-link class="nav-item" to="/stores">Магазины</router-link>
+          <router-link class="nav-item" to="/orders">Заказы</router-link>
+          <router-link v-if="userStore.user && userStore.user.is_superuser" class="nav-item" to="/customers">
+            Покупатели
+          </router-link>
         </div>
 
         <div class="nav-right">
@@ -25,11 +24,9 @@
       </div>
     </header>
 
-
     <router-view />
   </div>
 </template>
-
 
 <script setup>
 import { onMounted } from 'vue'
@@ -134,5 +131,4 @@ onMounted(async () => {
   transform: scale(1.12);
   box-shadow: 0 10px 26px rgba(255, 20, 147, 0.35);
 }
-
 </style>

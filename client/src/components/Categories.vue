@@ -55,12 +55,7 @@
         <h3 class="add-title">✨ Добавить новую категорию</h3>
         <form @submit.prevent="onAdd" class="add-form">
           <div class="form-group">
-            <input 
-              v-model="toAdd.name" 
-              placeholder="Введите название категории..." 
-              class="input-elegant"
-              required 
-            />
+            <input v-model="toAdd.name" placeholder="Введите название категории..." class="input-elegant" required />
             <button type="submit" class="btn-add-elegant">
               <i class="bi bi-plus-circle"></i> Добавить
             </button>
@@ -73,11 +68,7 @@
     <div class="filter-section">
       <div class="filter-wrapper">
         <i class="bi bi-search"></i>
-        <input 
-          v-model="filterName" 
-          placeholder="Поиск категории..." 
-          class="filter-input"
-        />
+        <input v-model="filterName" placeholder="Поиск категории..." class="filter-input" />
       </div>
       <div class="result-count" v-if="filteredCategories.length > 0">
         Найдено: <strong>{{ filteredCategories.length }}</strong> {{ pluralize(filteredCategories.length) }}
@@ -86,36 +77,26 @@
 
     <!-- Сетка карточек красивая -->
     <div class="cards-grid">
-      <div 
-        v-for="(c, index) in filteredCategories" 
-        :key="c.id" 
-        class="category-card"
-        :style="{ '--delay': index * 0.05 + 's' }"
-      >
+      <div v-for="(c, index) in filteredCategories" :key="c.id" class="category-card"
+        :style="{ '--delay': index * 0.05 + 's' }">
         <div class="card-header">
           <div class="card-icon">👚</div>
+          <!-- Кнопки редактирования/удаления только для админа -->
           <div class="card-actions" v-if="isAdmin">
-            <button 
-              class="btn-icon edit" 
-              @click="onEditClick(c)" 
-              data-bs-toggle="modal" 
-              data-bs-target="#editCategoryModal"
-              title="Редактировать"
-            >
+            <button class="btn-icon edit" @click="onEditClick(c)" data-bs-toggle="modal"
+              data-bs-target="#editCategoryModal" title="Редактировать">
               <i class="bi bi-pencil-square"></i>
             </button>
-            <button 
-              class="btn-icon delete" 
-              @click="onRemove(c)"
-              title="Удалить"
-            >
+            <button class="btn-icon delete" @click="onRemoveClick(c)" title="Удалить">
               <i class="bi bi-trash3"></i>
             </button>
           </div>
         </div>
-        
+
         <h4 class="card-title">{{ c.name }}</h4>
-        <div class="card-footer">
+
+        <!-- ID показываем только администратору -->
+        <div class="card-footer" v-if="isAdmin">
           <div class="card-meta">
             ID: <span>{{ c.id }}</span>
           </div>
@@ -130,6 +111,7 @@
       </div>
     </div>
 
+
     <!-- Модальное окно редактирования -->
     <div class="modal fade" id="editCategoryModal" tabindex="-1">
       <div class="modal-dialog modal-elegant">
@@ -143,11 +125,7 @@
           <div class="modal-body">
             <div class="form-group">
               <label class="form-label">Название категории</label>
-              <input 
-                v-model="toEdit.name" 
-                placeholder="Введите название..." 
-                class="input-elegant"
-              />
+              <input v-model="toEdit.name" placeholder="Введите название..." class="input-elegant" />
             </div>
           </div>
           <div class="modal-footer modal-elegant-footer">
@@ -159,17 +137,42 @@
         </div>
       </div>
     </div>
+
+    <!-- Модальное окно удаления -->
+    <div class="modal fade" id="deleteCategoryModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content modal-elegant-content">
+          <div class="modal-header modal-elegant-header delete-header">
+            <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Подтверждение удаления</h5>
+            <button type="button" class="btn-close btn-close-white" @click="hideDeleteModal"></button>
+          </div>
+          <div class="modal-body delete-modal-body">
+            <div class="delete-icon">🗑️</div>
+            <p class="delete-confirm-text">Вы уверены, что хотите удалить категорию?</p>
+            <p class="delete-category-name">"{{ categoryToDelete.name }}"</p>
+          </div>
+          <div class="modal-footer modal-elegant-footer delete-footer">
+            <button class="btn btn-secondary" @click="hideDeleteModal">Отмена</button>
+            <button class="btn btn-danger" @click="confirmDelete">
+              <i class="bi bi-trash3"></i> Удалить категорию
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import axios from 'axios'
+import * as bootstrap from 'bootstrap'
 
 const categories = ref([])
 const categoryStats = ref({})
 const toAdd = reactive({ name: '' })
 const toEdit = reactive({ id: null, name: '' })
+const categoryToDelete = reactive({ id: null, name: '' })
 const filterName = ref('')
 const user = ref(null)
 const isAdmin = computed(() => user.value?.is_superuser)
@@ -251,12 +254,18 @@ async function onAdd() {
   }
 }
 
-async function onRemove(c) {
-  if (!confirm(`Удалить категорию "${c.name}"?`)) return
-  
+function onRemoveClick(c) {
+  categoryToDelete.id = c.id
+  categoryToDelete.name = c.name
+  const modal = new bootstrap.Modal(document.getElementById('deleteCategoryModal'))
+  modal.show()
+}
+
+async function confirmDelete() {
   try {
-    await axios.delete(`/categories/${c.id}/`)
+    await axios.delete(`/categories/${categoryToDelete.id}/`)
     await Promise.all([fetchAll(), fetchCategoryStats()])
+    hideDeleteModal()
     showNotification('🗑️ Категория удалена', 'danger')
   } catch (err) {
     handleApiError(err, 'Ошибка при удалении категории')
@@ -310,6 +319,13 @@ async function exportWord() {
   }
 }
 
+function hideDeleteModal() {
+  const modalEl = document.getElementById('deleteCategoryModal')
+  const modalInstance = bootstrap.Modal.getInstance(modalEl)
+  if (modalInstance) modalInstance.hide()
+  document.querySelectorAll('.modal-backdrop').forEach(el => el.remove())
+}
+
 onMounted(async () => {
   await fetchUser()
   await Promise.all([fetchAll(), fetchCategoryStats()])
@@ -341,6 +357,7 @@ onMounted(async () => {
     opacity: 0;
     transform: translateY(-30px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -354,8 +371,15 @@ onMounted(async () => {
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
+
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+
+  50% {
+    transform: translateY(-10px);
+  }
 }
 
 .page-title {
@@ -390,6 +414,7 @@ onMounted(async () => {
     opacity: 0;
     transform: translateY(30px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -643,6 +668,7 @@ onMounted(async () => {
     opacity: 0;
     transform: translateY(20px) scale(0.95);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -741,8 +767,15 @@ onMounted(async () => {
 }
 
 @keyframes bounce {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-20px); }
+
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+
+  50% {
+    transform: translateY(-20px);
+  }
 }
 
 .empty-text {
@@ -758,7 +791,7 @@ onMounted(async () => {
   margin: 0;
 }
 
-/* ============ МОДАЛЬНОЕ ОКНО ============ */
+/* ============ МОДАЛЬНОЕ ОКНО РЕДАКТИРОВАНИЯ ============ */
 .modal-elegant-content {
   border: none;
   border-radius: 20px;
@@ -779,6 +812,14 @@ onMounted(async () => {
   gap: 10px;
   font-weight: 700;
   font-size: 1.3rem;
+}
+
+.btn-close {
+  filter: brightness(0) invert(1);
+}
+
+.btn-close-white {
+  filter: brightness(0) invert(1);
 }
 
 .modal-body {
@@ -812,11 +853,99 @@ onMounted(async () => {
   align-items: center;
   gap: 8px;
   transition: all 0.3s ease !important;
+  padding: 10px 20px !important;
+  border-radius: 10px !important;
 }
 
 .btn-elegant:hover {
   transform: translateY(-2px) !important;
   box-shadow: 0 10px 30px rgba(255, 20, 147, 0.3) !important;
+}
+
+/* ============ МОДАЛЬНОЕ ОКНО УДАЛЕНИЯ ============ */
+.modal-elegant-header.delete-header {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+}
+
+.delete-modal-body {
+  padding: 30px;
+  text-align: center;
+  background: linear-gradient(135deg, #fff5f5, #ffe6e6);
+}
+
+.delete-icon {
+  font-size: 3rem;
+  text-align: center;
+  margin-bottom: 15px;
+  animation: deleteShake 0.5s ease;
+}
+
+@keyframes deleteShake {
+
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+
+  25% {
+    transform: translateX(-5px) rotate(-2deg);
+  }
+
+  75% {
+    transform: translateX(5px) rotate(2deg);
+  }
+}
+
+.delete-confirm-text {
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 10px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.delete-category-name {
+  font-size: 1.3rem;
+  color: #dc3545;
+  font-weight: 700;
+  margin-bottom: 15px;
+  text-align: center;
+  word-break: break-word;
+}
+
+.delete-confirm-warning {
+  font-size: 0.9rem;
+  color: #dc3545;
+  font-weight: 600;
+  margin: 0;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.delete-footer {
+  justify-content: center;
+  gap: 15px;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #dc3545, #c82333) !important;
+  border: none !important;
+  color: white !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease !important;
+  padding: 10px 20px !important;
+  border-radius: 10px !important;
+}
+
+.btn-danger:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 30px rgba(220, 53, 69, 0.3) !important;
 }
 
 /* ============ NOTIFICATION ============ */

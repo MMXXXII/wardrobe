@@ -492,10 +492,10 @@ class OrderViewSet(viewsets.ModelViewSet, BaseExportMixin):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
+        """Пользователи видят только свои заказы, суперюзер видит все"""
         qs = Order.objects.select_related('product', 'customer')
         if self.request.user.is_superuser:
             return qs
-        
         return qs.filter(user=self.request.user)
 
     def perform_create(self, serializer):
@@ -503,15 +503,20 @@ class OrderViewSet(viewsets.ModelViewSet, BaseExportMixin):
 
     @action(detail=True, methods=['post'], url_path='complete')
     def complete_order(self, request, pk=None):
-        """Завершение заказа (установка статуса sold и даты доставки)"""
+        """Завершение заказа (только для суперюзеров)"""
+        if not request.user.is_superuser:
+            return Response(
+                {'detail': 'Только администратор может менять статус заказа.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         order = self.get_object()
-        
         if order.status == 'sold':
             return Response(
                 {'detail': 'Заказ уже завершен.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        
+
         from datetime import date
         order.status = 'sold'
         order.delivery_date = date.today()
@@ -526,17 +531,16 @@ class OrderViewSet(viewsets.ModelViewSet, BaseExportMixin):
     @action(detail=False, methods=['get'])
     def stats(self, request):
         qs = self.get_queryset()
-        
         count = qs.count()
         total_sum = qs.aggregate(total=Sum('total_price'))['total'] or 0
-        
+
         top_customer = (
             qs.values('customer__id', 'customer__first_name')
-            .annotate(order_count=Count('id'))
+            .annotate(order_count=Count('order_id'))
             .order_by('-order_count')
             .first()
         )
-        
+
         top_customer_data = {
             'name': top_customer['customer__first_name'] if top_customer else None,
             'order_count': top_customer['order_count'] if top_customer else 0
@@ -556,7 +560,7 @@ class OrderViewSet(viewsets.ModelViewSet, BaseExportMixin):
         queryset = self.get_queryset()
         data = [
             {
-                'ID': o.id,
+                'ID': o.order_id,
                 'Product': o.product.name if o.product else '',
                 'Customer': f"{o.customer.first_name} {o.customer.last_name or ''}" if o.customer else '',
                 'Quantity': o.quantity,
@@ -569,6 +573,7 @@ class OrderViewSet(viewsets.ModelViewSet, BaseExportMixin):
             for o in queryset
         ]
         return self.export_queryset(data, ['ID', 'Product', 'Customer', 'Quantity', 'Total Price', 'Status', 'Order Date', 'Delivery Date', 'User'], 'Orders')
+
 
 
 class UserProfileViewSet(viewsets.GenericViewSet):

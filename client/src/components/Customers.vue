@@ -132,6 +132,51 @@
       </div>
     </div>
   </div>
+  <!-- Delete Customer Modal -->
+  <div class="modal fade" id="deleteCustomerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-elegant-content">
+        <div class="modal-header modal-elegant-header delete-header">
+          <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Подтверждение удаления</h5>
+          <button type="button" class="btn-close btn-close-white" @click="hideDeleteModal"></button>
+        </div>
+        <div class="modal-body delete-modal-body">
+          <div class="delete-icon">🗑️</div>
+          <p class="delete-confirm-text">Вы уверены, что хотите удалить покупателя?</p>
+          <p class="delete-customer-name">"{{ customerToDelete.username }}"</p>
+        </div>
+        <div class="modal-footer modal-elegant-footer delete-footer">
+          <button class="btn btn-secondary" @click="hideDeleteModal">Отмена</button>
+          <button class="btn btn-danger" @click="confirmDelete">
+            <i class="bi bi-trash3"></i> Удалить покупателя
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete Selected Customers Modal -->
+  <div class="modal fade" id="deleteSelectedModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content modal-elegant-content">
+        <div class="modal-header modal-elegant-header delete-header">
+          <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Подтверждение удаления</h5>
+          <button type="button" class="btn-close btn-close-white" @click="hideDeleteSelectedModal"></button>
+        </div>
+        <div class="modal-body delete-modal-body">
+          <div class="delete-icon">🗑️</div>
+          <p class="delete-confirm-text">Вы уверены, что хотите удалить выбранных покупателей?</p>
+          <p class="delete-customer-count">Будет удалено: <strong>{{ selectedCustomers.length }}</strong> {{ pluralizeCustomers(selectedCustomers.length) }}</p>
+        </div>
+        <div class="modal-footer modal-elegant-footer delete-footer">
+          <button class="btn btn-secondary" @click="hideDeleteSelectedModal">Отмена</button>
+          <button class="btn btn-danger" @click="confirmDeleteSelected">
+            <i class="bi bi-trash3"></i> Удалить выбранных
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- Add Customer Modal -->
   <div class="modal fade" id="addCustomerModal" tabindex="-1" aria-hidden="true">
@@ -208,6 +253,10 @@
       </div>
     </div>
   </div>
+
+  
+
+  
 
 </template>
 
@@ -357,9 +406,8 @@ async function onUpdateCustomer() {
 function onRemoveClick(c) {
   customerToDelete.id = c.id
   customerToDelete.username = c.username
-  const modalEl = document.getElementById('deleteCustomerModal')
-  const modalInstance = new bootstrap.Modal(modalEl)
-  modalInstance.show()
+  const modal = new bootstrap.Modal(document.getElementById('deleteCustomerModal'))
+  modal.show()
 }
 
 async function confirmDelete() {
@@ -459,6 +507,12 @@ function hideDeleteModal() {
   const modalInstance = bootstrap.Modal.getInstance(modalEl)
   if (modalInstance) modalInstance.hide()
   document.querySelectorAll('.modal-backdrop').forEach(el => el.remove())
+}
+
+function pluralizeCustomers(count) {
+  if (count % 10 === 1 && count % 100 !== 11) return 'покупатель'
+  if (count % 10 >= 2 && count % 10 <= 4 && (count % 100 < 10 || count % 100 >= 20)) return 'покупателя'
+  return 'покупателей'
 }
 
 onMounted(() => {
@@ -738,6 +792,95 @@ onMounted(() => {
   border-radius: 15px;
   margin-bottom: 30px;
   border-left: 5px solid #ff1493;
+}
+
+/* ============ МОДАЛЬНОЕ ОКНО УДАЛЕНИЯ ============ */
+.modal-elegant-header.delete-header {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+}
+
+.delete-modal-body {
+  padding: 30px;
+  text-align: center;
+  background: linear-gradient(135deg, #fff5f5, #ffe6e6);
+}
+
+.delete-icon {
+  font-size: 3rem;
+  text-align: center;
+  margin-bottom: 15px;
+  animation: deleteShake 0.5s ease;
+}
+
+@keyframes deleteShake {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  25% { transform: translateX(-5px) rotate(-2deg); }
+  75% { transform: translateX(5px) rotate(2deg); }
+}
+
+.delete-confirm-text {
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 10px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.delete-customer-name {
+  font-size: 1.3rem;
+  color: #dc3545;
+  font-weight: 700;
+  margin-bottom: 15px;
+  text-align: center;
+  word-break: break-word;
+}
+
+.delete-customer-count {
+  font-size: 1.1rem;
+  color: #dc3545;
+  font-weight: 700;
+  margin-bottom: 15px;
+  text-align: center;
+}
+
+.delete-customer-count strong {
+  color: #c82333;
+  font-size: 1.3rem;
+}
+
+.delete-confirm-warning {
+  font-size: 0.9rem;
+  color: #dc3545;
+  font-weight: 600;
+  margin: 0;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.delete-footer {
+  justify-content: center;
+  gap: 15px;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #dc3545, #c82333) !important;
+  border: none !important;
+  color: white !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease !important;
+  padding: 10px 20px !important;
+  border-radius: 10px !important;
+}
+
+.btn-danger:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 30px rgba(220, 53, 69, 0.3) !important;
 }
 
 .bulk-info {

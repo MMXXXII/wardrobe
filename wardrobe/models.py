@@ -97,7 +97,7 @@ class Order(models.Model):
     quantity = models.PositiveIntegerField("Количество", default=1)
     total_price = models.DecimalField("Общая сумма", max_digits=10, decimal_places=2, default=0.00)
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Пользователь")
-    total = models.DecimalField("Общая сумма", max_digits=10, decimal_places=2, default=0.00)
+    order_id = models.AutoField(primary_key=True)
 
     class Meta:
         verbose_name = "Заказ"
@@ -107,20 +107,14 @@ class Order(models.Model):
         return f"{self.product} → {self.customer} ({self.status})"
     
     def save(self, *args, **kwargs):
-        """Автоматически рассчитываем общую стоимость и проверяем наличие товара"""
-        if self.product:
-            # Проверка на достаточность товара на складе
-            if self.quantity > self.product.quantity:
-                raise ValueError(f"Недостаточно товара на складе: доступно только {self.product.quantity} единиц.")
-
-            # Рассчитываем общую стоимость заказа
-            self.total_price = self.product.price * self.quantity
-            # Уменьшаем количество товара на складе
-            self.product.quantity -= self.quantity
-            self.product.save()
-
+        if self._state.adding and not self.order_id:
+            last_order = Order.objects.order_by('-order_id').first()
+            self.order_id = (last_order.order_id + 1) if last_order else 1
         super().save(*args, **kwargs)
 
+
+    def __str__(self):
+        return f"Order #{self.order_id}"
 
 
 

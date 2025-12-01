@@ -30,9 +30,8 @@ class CustomerAdmin(admin.ModelAdmin):
     list_filter = ("store", "user")
 
 
-@admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ("id", "product", "customer", "status", "quantity", "total_price", "user")
+    list_display = ("order_id", "product", "customer", "status", "quantity", "total_price", "user")
     list_filter = ("status", "product", "customer")
 
 

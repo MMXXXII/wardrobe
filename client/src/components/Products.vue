@@ -56,7 +56,7 @@
     </div>
 
     <!-- Форма добавления -->
-    <div class="add-section">
+    <div class="add-section" v-if="isAdmin">
       <div class="add-card">
         <h3 class="add-title">✨ Добавить новый товар</h3>
         <form @submit.prevent="onAdd" class="add-form">
@@ -97,7 +97,6 @@
               <i class="bi bi-plus-circle"></i> Добавить товар
             </button>
           </div>
-
         </form>
       </div>
     </div>
@@ -136,7 +135,6 @@
         <p class="empty-text">Товары не найдены</p>
       </div>
 
-      <!-- ... внутри cards-grid ... -->
       <div v-for="(p, index) in filteredProducts" :key="p.id" class="product-card"
         :style="{ '--delay': index * 0.05 + 's' }">
 
@@ -161,28 +159,27 @@
             <span class="product-quantity">Количество: {{ p.quantity }}</span>
           </div>
           <div class="product-price">{{ p.price }} ₽</div>
-          
         </div>
 
         <!-- КНОПКИ СПРАВА -->
-        <div class="product-actions">
+        <div class="product-actions" v-if="isAdmin">
           <button class="btn-action edit" @click="onEditClick(p)" title="Редактировать">
             <i class="bi bi-pencil-square"></i>
           </button>
-          <button class="btn-action delete" @click="onRemove(p)" title="Удалить">
+          <button class="btn-action delete" @click="onRemoveClick(p)" title="Удалить">
             <i class="bi bi-trash3"></i>
           </button>
         </div>
       </div>
     </div>
 
-    <!-- Модалки -->
-    <div class="modal fade" id="editProductModal" tabindex="-1">
-      <div class="modal-dialog modal-elegant">
+    <!-- Edit Product Modal -->
+    <div class="modal fade" id="editProductModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content modal-elegant-content">
           <div class="modal-header modal-elegant-header">
             <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Редактировать товар</h5>
-            <button type="button" class="btn-close" @click="hideEditModal"></button>
+            <button type="button" class="btn-close btn-close-white" @click="hideEditModal"></button>
           </div>
           <div class="modal-body">
             <div class="form-group">
@@ -221,17 +218,20 @@
               <input v-model="toEdit.color" class="input-elegant" />
             </div>
             <div class="form-group">
+              <label class="form-label">Количество</label>
+              <input v-model.number="toEdit.quantity" type="number" class="input-elegant" />
+            </div>
+            <div class="form-group">
               <label class="form-label">Фото</label>
-              <input type="file" @change="onFileChange" accept="image/*" class="form-control" />
+              <input type="file" @change="onFileChangeEdit" accept="image/*" class="form-control" />
             </div>
             <div v-if="toEdit.imagePreview" class="edit-image-preview">
               <img :src="toEdit.imagePreview" @click="openImageModal(toEdit.imagePreview)" />
             </div>
-
           </div>
           <div class="modal-footer modal-elegant-footer">
-            <button class="btn btn-secondary" @click="hideEditModal">Отменить</button>
-            <button class="btn btn-primary btn-elegant" @click="onUpdate">
+            <button class="btn btn-secondary" @click="hideEditModal">Отмена</button>
+            <button class="btn btn-elegant" @click="onUpdate">
               <i class="bi bi-check-circle"></i> Сохранить
             </button>
           </div>
@@ -239,6 +239,30 @@
       </div>
     </div>
 
+    <!-- Delete Product Modal -->
+    <div class="modal fade" id="deleteProductModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content modal-elegant-content">
+          <div class="modal-header modal-elegant-header delete-header">
+            <h5 class="modal-title"><i class="bi bi-exclamation-triangle-fill"></i> Подтверждение удаления</h5>
+            <button type="button" class="btn-close btn-close-white" @click="hideDeleteModal"></button>
+          </div>
+          <div class="modal-body delete-modal-body">
+            <div class="delete-icon">🗑️</div>
+            <p class="delete-confirm-text">Вы уверены, что хотите удалить товар?</p>
+            <p class="delete-product-name">"{{ productToDelete.name }}"</p>
+          </div>
+          <div class="modal-footer modal-elegant-footer delete-footer">
+            <button class="btn btn-secondary" @click="hideDeleteModal">Отмена</button>
+            <button class="btn btn-danger" @click="confirmDelete">
+              <i class="bi bi-trash3"></i> Удалить товар
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Image Modal -->
     <div class="modal fade" id="imageModal" tabindex="-1">
       <div class="modal-dialog modal-dialog-centered modal-lg">
         <div class="modal-content modal-image-content">
@@ -246,7 +270,7 @@
             <img :src="currentImage" class="img-fluid modal-image" />
           </div>
           <div class="modal-footer">
-            <button class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            <button class="btn btn-secondary" @click="hideImageModal">Закрыть</button>
           </div>
         </div>
       </div>
@@ -263,8 +287,9 @@ const products = ref([])
 const categories = ref([])
 const stores = ref([])
 const productStats = ref({})
-const toAdd = reactive({ name: '', category: '', store: '', size: 'M', price: 0, color: '', image: null })
-const toEdit = reactive({ id: null, name: '', category: '', store: '', size: 'M', price: 0, color: '', image: null })
+const toAdd = reactive({ name: '', category: '', store: '', size: 'M', price: 0, color: '', quantity: 0, image: null })
+const toEdit = reactive({ id: null, name: '', category: '', store: '', size: 'M', price: 0, color: '', quantity: 0, image: null, imagePreview: null })
+const productToDelete = reactive({ id: null, name: '' })
 const filterName = ref('')
 const filterCategory = ref('')
 const filterSize = ref('')
@@ -320,15 +345,26 @@ const filteredProducts = computed(() =>
 function onFileChange(event) {
   const file = event.target.files[0]
   if (!file) return
-  if (toEdit.id) toEdit.image = file
-  else toAdd.image = file
+  toAdd.image = file
 }
 
+function onFileChangeEdit(event) {
+  const file = event.target.files[0]
+  if (!file) return
+  toEdit.image = file
+}
 
 function openImageModal(src) {
   currentImage.value = src
   const modal = new bootstrap.Modal(document.getElementById('imageModal'))
   modal.show()
+}
+
+function hideImageModal() {
+  const modalEl = document.getElementById('imageModal')
+  const modalInstance = bootstrap.Modal.getInstance(modalEl)
+  if (modalInstance) modalInstance.hide()
+  document.querySelectorAll('.modal-backdrop').forEach(el => el.remove())
 }
 
 async function fetchUser() {
@@ -360,52 +396,34 @@ async function fetchProductStats() {
 
 async function onAdd() {
   try {
-    const formData = new FormData();
-    formData.append('name', toAdd.name);
-    formData.append('category', toAdd.category);
-    formData.append('store', toAdd.store);
-    formData.append('size', toAdd.size);
-    formData.append('price', toAdd.price);
-    formData.append('quantity', toAdd.quantity);  // Убедитесь, что количество передается
-    if (toAdd.color) formData.append('color', toAdd.color);
-    if (toAdd.image) formData.append('image', toAdd.image);
+    const formData = new FormData()
+    formData.append('name', toAdd.name)
+    formData.append('category', toAdd.category)
+    formData.append('store', toAdd.store)
+    formData.append('size', toAdd.size)
+    formData.append('price', toAdd.price)
+    formData.append('quantity', toAdd.quantity)
+    if (toAdd.color) formData.append('color', toAdd.color)
+    if (toAdd.image) formData.append('image', toAdd.image)
 
-    await axios.post('/products/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+    await axios.post('/products/', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 
-    // Очистка формы
-    Object.assign(toAdd, { name: '', category: '', store: '', size: 'M', price: 0, color: '', quantity: 0, image: null });
+    Object.assign(toAdd, { name: '', category: '', store: '', size: 'M', price: 0, color: '', quantity: 0, image: null })
+    const fileInput = document.querySelector('.file-input')
+    if (fileInput) fileInput.value = ''
 
-    // Сброс input file
-    const fileInput = document.querySelector('.file-input');
-    if (fileInput) fileInput.value = '';
-
-    await Promise.all([fetchAll(), fetchProductStats()]);
-    showNotification('✨ Товар добавлен!', 'success');
-  } catch (err) {
-    handleApiError(err, 'Ошибка при добавлении');
-  }
-}
-
-
-
-async function onRemove(p) {
-  if (!confirm(`Удалить "${p.name}"?`)) return
-  try {
-    await axios.delete(`/products/${p.id}/`)
     await Promise.all([fetchAll(), fetchProductStats()])
-    showNotification('🗑️ Товар удален', 'danger')
+    showNotification('✨ Товар добавлен!', 'success')
   } catch (err) {
-    handleApiError(err, 'Ошибка при удалении')
+    handleApiError(err, 'Ошибка при добавлении')
   }
 }
 
 function onEditClick(p) {
-  Object.assign(toEdit, { ...p, newImageFile: null, imagePreview: p.image })
+  Object.assign(toEdit, { ...p, image: null, imagePreview: p.image })
   const modal = new bootstrap.Modal(document.getElementById('editProductModal'))
   modal.show()
 }
-
-
 
 async function onUpdate() {
   try {
@@ -415,9 +433,9 @@ async function onUpdate() {
     formData.append('store', toEdit.store)
     formData.append('size', toEdit.size)
     formData.append('price', toEdit.price)
-    formData.append('quantity', toEdit.quantity)  // Добавлено поле для количества
+    formData.append('quantity', toEdit.quantity)
     if (toEdit.color) formData.append('color', toEdit.color)
-    if (toEdit.newImageFile) formData.append('image', toEdit.newImageFile)
+    if (toEdit.image) formData.append('image', toEdit.image)
 
     await axios.put(`/products/${toEdit.id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
     await Promise.all([fetchAll(), fetchProductStats()])
@@ -428,6 +446,23 @@ async function onUpdate() {
   }
 }
 
+function onRemoveClick(p) {
+  productToDelete.id = p.id
+  productToDelete.name = p.name
+  const modal = new bootstrap.Modal(document.getElementById('deleteProductModal'))
+  modal.show()
+}
+
+async function confirmDelete() {
+  try {
+    await axios.delete(`/products/${productToDelete.id}/`)
+    await Promise.all([fetchAll(), fetchProductStats()])
+    hideDeleteModal()
+    showNotification('🗑️ Товар удален', 'danger')
+  } catch (err) {
+    handleApiError(err, 'Ошибка при удалении')
+  }
+}
 
 async function exportExcel() {
   try {
@@ -463,6 +498,13 @@ async function exportWord() {
 
 function hideEditModal() {
   const modalEl = document.getElementById('editProductModal')
+  const modalInstance = bootstrap.Modal.getInstance(modalEl)
+  if (modalInstance) modalInstance.hide()
+  document.querySelectorAll('.modal-backdrop').forEach(el => el.remove())
+}
+
+function hideDeleteModal() {
+  const modalEl = document.getElementById('deleteProductModal')
   const modalInstance = bootstrap.Modal.getInstance(modalEl)
   if (modalInstance) modalInstance.hide()
   document.querySelectorAll('.modal-backdrop').forEach(el => el.remove())
@@ -822,7 +864,6 @@ onMounted(() => {
 .cards-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  /* ровно 3 карточки в ряд */
   gap: 25px;
 }
 
@@ -883,24 +924,10 @@ onMounted(() => {
   }
 }
 
-/* Selected style */
-.product-card.selected {
-  background: linear-gradient(135deg, #fff0f5, #f5f0ff);
-  border-color: #ff6b9d;
+.product-card:hover {
+  transform: translateY(-3px);
   box-shadow: 0 12px 40px rgba(255, 107, 157, 0.15);
-}
-
-.product-checkbox {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-}
-
-.product-checkbox input {
-  width: 20px;
-  height: 20px;
-  cursor: pointer;
-  accent-color: #ff6b9d;
+  border-color: #ffb6c1;
 }
 
 .product-image-wrapper {
@@ -954,22 +981,15 @@ onMounted(() => {
   gap: 8px;
 }
 
-.badge-size {
-  background: linear-gradient(135deg, #ffb6c1, #ff6b9d);
-  color: white;
-  padding: 4px 10px;
-  border-radius: 16px;
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
+.badge-size,
 .badge-color {
-  background: linear-gradient(135deg, var(--color), #f5f0ff);
-  color: #222;
+  background: #ffffff; /* белый фон */
+  color: #333333;      /* тёмный текст для читаемости */
   padding: 4px 10px;
   border-radius: 16px;
   font-size: 0.85rem;
   font-weight: 600;
+  border: 1px solid #ddd; /* лёгкая граница для контраста */
 }
 
 .product-meta {
@@ -1012,7 +1032,6 @@ onMounted(() => {
   background: linear-gradient(135deg, #ff6b9d, #c44569);
 }
 
-/* Hover effect for edit */
 .btn-action.edit:hover {
   transform: scale(1.15) rotate(-10deg);
 }
@@ -1021,8 +1040,266 @@ onMounted(() => {
   background: linear-gradient(135deg, #dc3545, #c82333);
 }
 
-/* Hover effect for delete */
 .btn-action.delete:hover {
   transform: scale(1.15) rotate(10deg);
+}
+
+.modal-elegant-content {
+  border: none;
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+.modal-elegant-header {
+  background: linear-gradient(135deg, #ff6b9d, #c44569);
+  color: white;
+  border: none;
+  border-radius: 20px 20px 0 0;
+  padding: 25px;
+}
+
+.modal-elegant-header .modal-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 1.3rem;
+}
+
+.btn-close-white {
+  filter: brightness(0) invert(1);
+}
+
+.modal-body {
+  padding: 30px;
+}
+
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 10px;
+  color: #ff6b9d;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.edit-image-preview {
+  margin-top: 15px;
+  text-align: center;
+}
+
+.edit-image-preview img {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: 15px;
+  box-shadow: 0 5px 20px rgba(255, 107, 157, 0.15);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.edit-image-preview img:hover {
+  transform: scale(1.05);
+}
+
+.delete-confirm-text {
+  font-size: 1.1rem;
+  color: #333;
+  margin-bottom: 10px;
+  line-height: 1.6;
+  text-align: center;
+}
+
+.delete-product-name {
+  font-size: 1.3rem;
+  color: #dc3545;
+  font-weight: 700;
+  margin-bottom: 15px;
+  text-align: center;
+  word-break: break-word;
+}
+
+.delete-confirm-warning {
+  font-size: 0.9rem;
+  color: #dc3545;
+  font-weight: 600;
+  margin: 0;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.delete-icon {
+  font-size: 3rem;
+  text-align: center;
+  margin-bottom: 15px;
+  animation: deleteShake 0.5s ease;
+}
+
+@keyframes deleteShake {
+
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+
+  25% {
+    transform: translateX(-5px) rotate(-2deg);
+  }
+
+  75% {
+    transform: translateX(5px) rotate(2deg);
+  }
+}
+
+.modal-elegant-header.delete-header {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+}
+
+.delete-modal-body {
+  padding: 30px;
+  text-align: center;
+  background: linear-gradient(135deg, #fff5f5, #ffe6e6);
+}
+
+.delete-footer {
+  justify-content: center;
+  gap: 15px;
+}
+
+.modal-elegant-footer {
+  background: #f5f5f5;
+  border-top: 2px solid #f0f0f0;
+  border-radius: 0 0 20px 20px;
+  padding: 20px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-elegant {
+  background: linear-gradient(135deg, #ff6b9d, #c44569) !important;
+  border: none !important;
+  color: white !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease !important;
+  padding: 10px 20px !important;
+  border-radius: 10px !important;
+}
+
+.btn-elegant:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 30px rgba(255, 107, 157, 0.3) !important;
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #dc3545, #c82333) !important;
+  border: none !important;
+  color: white !important;
+  font-weight: 700 !important;
+  display: flex !important;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s ease !important;
+  padding: 10px 20px !important;
+  border-radius: 10px !important;
+}
+
+.btn-danger:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 10px 30px rgba(220, 53, 69, 0.3) !important;
+}
+
+.modal-image-content {
+  border: none;
+  border-radius: 20px;
+  background: #000;
+}
+
+.modal-image {
+  max-width: 100%;
+  max-height: 80vh;
+  border-radius: 15px;
+}
+
+.notification {
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  color: #fff;
+  padding: 16px 24px;
+  border-radius: 15px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  z-index: 2000;
+  font-size: 1rem;
+  font-weight: 600;
+  max-width: 90%;
+  text-align: center;
+}
+
+.notif-fade-enter-active,
+.notif-fade-leave-active {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+
+.notif-fade-enter-from {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-20px);
+}
+
+.notif-fade-enter-to {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.notif-fade-leave-from {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+.notif-fade-leave-to {
+  opacity: 0;
+  transform: translateX(-50%) translateY(-20px);
+}
+
+.notification-success {
+  background: linear-gradient(135deg, #28a745, #20c997);
+}
+
+.notification-danger {
+  background: linear-gradient(135deg, #dc3545, #c82333);
+}
+
+.notification-warning {
+  background: linear-gradient(135deg, #ffc107, #ff9800);
+  color: #000;
+}
+
+@media (max-width: 768px) {
+  .cards-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .page-title {
+    font-size: 2.5rem;
+  }
+
+  .product-card {
+    flex-wrap: wrap;
+  }
+
+  .product-actions {
+    width: 100%;
+    flex-direction: row;
+    justify-content: flex-end;
+  }
 }
 </style>

@@ -56,6 +56,103 @@
       </div>
     </div>
 
+    <!-- Edit Order Modal -->
+    <div class="modal fade" id="editOrderModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content modal-elegant-content">
+          <div class="modal-header modal-elegant-header">
+            <h5 class="modal-title">Редактировать заказ</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+              aria-label="Закрыть"></button>
+          </div>
+          <div class="modal-body">
+            <div class="form-group">
+              <label class="form-label">Магазин</label>
+              <select v-model="toEdit.store" class="input-elegant" required>
+                <option value="" disabled>Выберите магазин</option>
+                <option v-for="s in stores" :key="s.id" :value="s.id">{{ s.name }}</option>
+              </select>
+            </div>
+
+
+            <div class="form-group">
+              <label class="form-label">Товар</label>
+              <select v-model="toEdit.product" class="input-elegant" required>
+                <option value="" disabled>Выберите товар</option>
+                <option v-for="p in filteredProductsForEdit" :key="p.id" :value="p.id">
+                  {{ p.name }} ({{ p.price }} ₽)
+                </option>
+              </select>
+
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Количество</label>
+              <input v-model.number="toEdit.quantity" type="number" min="1" class="input-elegant" required />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Дата заказа</label>
+              <input v-model="toEdit.order_date" type="date" class="input-elegant" required />
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Статус</label>
+              <select v-model="toEdit.status" class="input-elegant">
+                <option value="pending">⏳ Ожидает</option>
+                <option value="sold">✅ Продано</option>
+                <option value="returned">↩️ Возвращено</option>
+                <option value="cancelled">❌ Отменено</option>
+              </select>
+            </div>
+          </div>
+          <div class="modal-footer modal-elegant-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+            <button type="button" class="btn btn-elegant" @click="onUpdate">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Delete Order Modal -->
+    <div class="modal fade" id="deleteOrderModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content modal-elegant-content">
+          <div class="modal-header modal-elegant-header delete-header">
+            <h5 class="modal-title">
+              <i class="bi bi-exclamation-triangle-fill"></i> Подтверждение удаления
+            </h5>
+            <button type="button" class="btn-close btn-close-white" @click="hideDeleteModal"></button>
+          </div>
+          <div class="modal-body delete-modal-body">
+            <div class="delete-icon">🗑️</div>
+            <p class="delete-confirm-text">Вы уверены, что хотите удалить заказ?</p>
+            <p class="delete-order-name">Заказ #{{ orderToDelete.id }}</p>
+            <div class="delete-order-details">
+              <div class="detail-row">
+                <span class="detail-label">Товар:</span>
+                <span class="detail-value">{{ orderToDelete.product_name }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Покупатель:</span>
+                <span class="detail-value">{{ orderToDelete.customer_name }}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">Сумма:</span>
+                <span class="detail-value highlight">{{ orderToDelete.total_price }} ₽</span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer modal-elegant-footer delete-footer">
+            <button class="btn btn-secondary" @click="hideDeleteModal">Отмена</button>
+            <button class="btn btn-danger" @click="confirmDelete">
+              <i class="bi bi-trash3"></i> Удалить заказ
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Форма добавления -->
     <div class="add-section">
       <div class="add-card">
@@ -92,74 +189,49 @@
       <input v-model="filterDate" type="date" class="filter-input" placeholder="Фильтр по дате" />
     </div>
 
-    <!-- Сетка карточек заказов -->
     <div class="cards-grid">
-      <div v-if="filteredOrders.length === 0" class="empty-state">
-        <div class="empty-icon">🗂️</div>
-        <p class="empty-text">Заказы не найдены</p>
-      </div>
-      <div v-for="o in filteredOrders" :key="o.id" class="order-card">
+      <div v-for="(o, index) in filteredOrders" :key="o.order_id" class="order-card">
         <div class="order-header">
-          <h4>Заказ #{{ o.id }}</h4>
+          <h4>Заказ #{{ index + 1 }}</h4>
           <span class="badge" :class="getStatusClass(o.status)">{{ getStatusText(o.status) }}</span>
         </div>
+
         <div class="order-content">
           <div class="order-row"><span class="order-label">Товар:</span> {{ o.product_name }}</div>
+          <div class="order-row"><span class="order-label">Магазин:</span> {{ o.store_name }}</div>
           <div class="order-row"><span class="order-label">Покупатель:</span> {{ o.customer_name }}</div>
           <div class="order-row"><span class="order-label">Количество:</span> {{ o.quantity }} шт</div>
           <div class="order-row order-price"><span class="order-label">Сумма:</span> {{ o.total_price }} ₽</div>
           <div class="order-row text-muted small">Дата заказа: {{ o.order_date }}</div>
           <div class="order-row text-muted small" v-if="o.delivery_date">Дата доставки: {{ o.delivery_date }}</div>
         </div>
+
         <div class="card-buttons">
-          <button v-if="o.status === 'pending'" class="btn-action complete" @click="onComplete(o)">
-            <i class="bi bi-check-circle"></i> Завершить
-          </button>
-          <button v-if="isAdmin" class="btn-action edit" @click="onEditClick(o)" data-bs-toggle="modal"
-            data-bs-target="#editOrderModal" title="Редактировать">
+          <div v-if="isAdmin" class="status-control" style="flex: 1; width: 100%;">
+            <select :value="o.status" @change="event => onStatusChange(o, event.target.value)" class="input-elegant"
+              style="width: 100%;">
+              <option value="pending">⏳ Ожидает</option>
+              <option value="sold">✅ Продано</option>
+              <option value="returned">↩️ Возвращено</option>
+              <option value="cancelled">❌ Отменено</option>
+            </select>
+          </div>
+
+
+          <button v-if="isAdmin" class="btn-action edit" @click="onEditClick(o)" title="Редактировать">
             <i class="bi bi-pencil-square"></i>
           </button>
+
+
           <button v-if="isAdmin" class="btn-action delete" @click="onRemove(o)" title="Удалить">
             <i class="bi bi-trash3"></i>
           </button>
         </div>
       </div>
-
     </div>
 
-    <!-- Модалка редактирования -->
-    <div class="modal fade" id="editOrderModal" tabindex="-1">
-      <div class="modal-dialog modal-elegant">
-        <div class="modal-content modal-elegant-content">
-          <div class="modal-header modal-elegant-header">
-            <h5 class="modal-title"><i class="bi bi-pencil-square"></i> Редактировать заказ</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <select v-model="toEdit.product" class="input-elegant mb-2">
-              <option v-for="p in products" :key="p.id" :value="p.id">{{ p.name }}</option>
-            </select>
-            <select v-model="toEdit.customer" class="input-elegant mb-2">
-              <option v-for="c in customers" :key="c.id" :value="c.id">{{ c.first_name }} {{ c.last_name || '' }}
-              </option>
-            </select>
-            <input v-model.number="toEdit.quantity" type="number" min="1" placeholder="Количество"
-              class="input-elegant mb-2" />
-            <input v-model="toEdit.order_date" type="date" class="input-elegant mb-2" />
-            <select v-model="toEdit.status" class="input-elegant mb-2">
-              <option value="pending">Ожидает</option>
-              <option value="sold">Продано</option>
-              <option value="returned">Возвращено</option>
-              <option value="cancelled">Отменено</option>
-            </select>
-          </div>
-          <div class="modal-footer modal-elegant-footer">
-            <button class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
-            <button class="btn btn-primary btn-elegant" @click="onUpdate" data-bs-dismiss="modal">Сохранить</button>
-          </div>
-        </div>
-      </div>
-    </div>
+
+
   </div>
 </template>
 
@@ -167,6 +239,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue'
 import axios from 'axios'
+import * as bootstrap from 'bootstrap'
 
 const orders = ref([])
 const products = ref([])
@@ -179,6 +252,13 @@ const filterStatus = ref('')
 const filterDate = ref('')
 const user = ref(null)
 const isAdmin = computed(() => user.value?.is_superuser)
+let editOrderModalInstance = null
+const orderToDelete = reactive({
+  id: null,
+  product_name: '',
+  customer_name: '',
+  total_price: 0
+})
 
 
 // Notification
@@ -217,10 +297,47 @@ const filteredOrders = computed(() =>
   )
 )
 
+const filteredProductsForEdit = computed(() => {
+  if (!toEdit.store) return []
+  return products.value.filter(p => p.store === toEdit.store)
+})
+
+
+
 const filteredProducts = computed(() => {
   // Фильтруем товары по выбранному магазину, сравнивая store.id с выбранным store
   return products.value.filter(p => p.store === toAdd.store)
 })
+// Изменение статуса заказа (выполняется при выборе нового статуса)
+async function onStatusChange(order, newStatus) {
+  const oldStatus = order.status;
+  if (oldStatus === newStatus) return;
+
+  try {
+    // PATCH только новый статус
+    await axios.patch(`/orders/${order.order_id}/`, { status: newStatus });
+
+    // Обновляем локально заказ
+    order.status = newStatus;
+
+    // Обновляем статистику
+    await fetchOrderStats();
+
+    // Показ уведомления
+    const messages = {
+      pending: '⏳ Статус изменён на "Ожидает"',
+      sold: '✅ Статус изменён на "Продано"',
+      returned: '↩️ Статус изменён на "Возвращено"',
+      cancelled: '❌ Статус изменён на "Отменено"'
+    };
+    showNotification(messages[newStatus], 'success');
+  } catch (err) {
+    // Восстанавливаем старый статус при ошибке
+    order.status = oldStatus;
+    handleApiError(err, 'Ошибка при изменении статуса');
+  }
+}
+
 
 
 
@@ -257,6 +374,7 @@ async function fetchUser() {
 async function fetchAll() {
   try {
     const resOrders = await axios.get('/orders/')
+    console.log(resOrders.data)
     orders.value = resOrders.data
     const resProducts = await axios.get('/products/')
     products.value = resProducts.data
@@ -321,10 +439,10 @@ const onAdd = async () => {
 
 
 async function onRemove(o) {
-  if (!confirm(`Удалить заказ #${o.id}?`)) return
+  if (!confirm(`Удалить заказ #${o.order_id}?`)) return
 
   try {
-    await axios.delete(`/orders/${o.id}/`)
+    await axios.delete(`/orders/${o.order_id}/`)
     await Promise.all([fetchAll(), fetchOrderStats()])
     showNotification('Заказ удален', 'danger')
   } catch (err) {
@@ -332,21 +450,56 @@ async function onRemove(o) {
   }
 }
 
+
 function onEditClick(o) {
   Object.assign(toEdit, { ...o })
+
+  const modalEl = document.getElementById('editOrderModal')
+
+  // Если модалка ещё не создана, создаём экземпляр
+  if (!editOrderModalInstance) {
+    editOrderModalInstance = new bootstrap.Modal(modalEl)
+  }
+
+  editOrderModalInstance.show()
 }
 
 async function onUpdate() {
   try {
-    await axios.put(`/orders/${toEdit.id}/`, {
+    // Находим объект товара
+    const productObj = products.value.find(p => p.id === toEdit.product)
+    if (!productObj) {
+      showNotification('Выбранный товар не найден', 'danger')
+      return
+    }
+
+    // Проверка доступного количества
+    if (toEdit.quantity > productObj.quantity) {
+      showNotification(`Недостаточно товара: доступно только ${productObj.quantity} единиц`, 'danger')
+      return
+    }
+
+    // Отправляем PUT-запрос на сервер
+    await axios.put(`/orders/${toEdit.order_id}/`, {
+      store: toEdit.store,
       product: toEdit.product,
       customer: toEdit.customer,
       quantity: toEdit.quantity,
       order_date: toEdit.order_date,
       status: toEdit.status
     })
+
+    // Обновляем данные заказов и статистику
     await Promise.all([fetchAll(), fetchOrderStats()])
-    showNotification('Изменения сохранены', 'warning')
+
+    // Показ уведомления
+    showNotification('Заказ обновлён', 'success')
+
+    // Закрываем модалку через JS
+    if (editOrderModalInstance) {
+      editOrderModalInstance.hide()
+    }
+
   } catch (err) {
     handleApiError(err, 'Ошибка при обновлении заказа')
   }
