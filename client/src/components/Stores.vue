@@ -83,6 +83,25 @@ async function onUpdate() {
   }
 }
 
+// Export functionality
+async function exportData(format) {
+  if (!isAdmin.value) {
+    ElMessage.error('Только администратор может экспортировать данные')
+    return
+  }
+
+  try {
+    const response = await axios.get(`/stores/export/?type=${format}`, { responseType: 'blob' })
+    const blob = response.data
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `Stores.${format === 'excel' ? 'xlsx' : 'docx'}`
+    link.click()
+  } catch {
+    ElMessage.error('Ошибка экспорта')
+  }
+}
+
 onMounted(async () => {
   await fetchUser()
   await Promise.all([fetchAll(), fetchStats()])
@@ -97,6 +116,12 @@ onMounted(async () => {
 
     <el-card v-if="storeStats">
       <el-statistic title="Всего магазинов" :value="storeStats.count || 0" />
+    </el-card>
+
+    <el-card v-if="isAdmin">
+      <h3>Экспорт</h3>
+      <el-button type="primary" @click="exportData('excel')">Экспорт в Excel</el-button>
+      <el-button type="primary" @click="exportData('word')" style="margin-left: 10px;">Экспорт в Word</el-button>
     </el-card>
 
     <el-card v-if="isAdmin">
@@ -141,7 +166,6 @@ onMounted(async () => {
     </el-dialog>
   </div>
 </template>
-
 
 <style scoped>
 .page {

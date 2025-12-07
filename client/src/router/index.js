@@ -1,4 +1,3 @@
-// src/router/index.js
 import { createRouter, createWebHistory } from "vue-router"
 import { useUserStore } from "../stores/userStore"
 
@@ -17,37 +16,37 @@ const routes = [
   },
   { 
     path: "/categories", 
-    name: "categories",  // ← ДОБАВИЛИ name
+    name: "categories",
     component: Categories,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/stores", 
-    name: "stores",      // ← ДОБАВИЛИ name
+    name: "stores", 
     component: Stores,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/products", 
-    name: "products",    // ← ДОБАВИЛИ name
+    name: "products", 
     component: Products,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/customers", 
-    name: "customers",   // ← ДОБАВИЛИ name
+    name: "customers", 
     component: Customers,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/orders", 
-    name: "orders",      // ← ДОБАВИЛИ name
+    name: "orders",    
     component: Orders,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/profile", 
-    name: "profile",     // ← ДОБАВИЛИ name
+    name: "profile",    
     component: Profile,
     meta: { requiresAuth: true, requiresOtp: true }
   },
@@ -56,7 +55,6 @@ const routes = [
     name: "login",
     component: Login 
   },
-  // перенаправления...
   {
     path: "/brands",
     redirect: "/categories"
@@ -88,25 +86,21 @@ router.beforeEach(async (to, from, next) => {
   if (!initialized) {
     initialized = true
     const restored = userStore.initializeFromStorage()
-    console.log('[Store] Initialized from storage:', restored)
   }
   
   if (to.meta.requiresAuth) {
     if (!userStore.isAuthenticated) {
-      console.log('[Router] Not authenticated, redirecting to login')
       next('/login')
       return
     }
     
     if (to.meta.requiresOtp && !userStore.isOtpVerified) {
-      console.log('[Router] OTP not verified, redirecting to login')
       next('/login')
       return
     }
     
     next()
   } else if (to.path === '/login' && userStore.isAuthenticated && userStore.isOtpVerified) {
-    console.log('[Router] Already authenticated, redirecting to categories')
     next('/categories')
   } else {
     next()

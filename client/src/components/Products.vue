@@ -114,6 +114,24 @@ async function onUpdate() {
   }
 }
 
+async function exportData(format) {
+  if (!isAdmin.value) {
+    ElMessage.error('Только администратор может экспортировать данные')
+    return
+  }
+
+  try {
+    const response = await axios.get(`/products/export/?type=${format}`, { responseType: 'blob' })
+    const blob = response.data
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `Products.${format === 'excel' ? 'xlsx' : 'docx'}`
+    link.click()
+  } catch {
+    ElMessage.error('Ошибка экспорта')
+  }
+}
+
 onMounted(async () => {
   await fetchUser()
   await Promise.all([fetchAll(), fetchStats()])
@@ -138,6 +156,12 @@ onMounted(async () => {
     </el-card>
 
     <el-card v-if="isAdmin">
+      <h3>Экспорт</h3>
+      <el-button type="primary" @click="exportData('excel')">Экспорт в Excel</el-button>
+      <el-button type="primary" @click="exportData('word')" style="margin-left: 10px;">Экспорт в Word</el-button>
+    </el-card>
+
+    <el-card v-if="isAdmin">
       <h3>Добавить товар</h3>
       <el-form @submit.prevent="onAdd">
         <el-input v-model="toAdd.name" placeholder="Название" style="margin-bottom: 10px;" />
@@ -157,7 +181,6 @@ onMounted(async () => {
           <el-option label="XXL" value="XXL" />
         </el-select>
 
-        <!-- Разделение полей Цена и Количество -->
         <el-row :gutter="20" style="margin-bottom: 10px;">
           <el-col :span="12">
             <el-input-number v-model="toAdd.price" :min="0" placeholder="Цена" style="width: 100%;" />
@@ -174,7 +197,6 @@ onMounted(async () => {
         <el-button type="primary" native-type="submit">Добавить товар</el-button>
       </el-form>
     </el-card>
-
 
     <el-input v-model="filterName" placeholder="Поиск..." style="margin: 20px 0;" />
     <el-select v-model="filterCategory" placeholder="Все категории" style="margin: 0 10px 20px 0; width: 200px;">

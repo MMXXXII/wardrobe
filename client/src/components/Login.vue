@@ -73,7 +73,7 @@ function resetLogin() {
         </div>
       </template>
 
-      <!-- Форма логина -->
+
       <el-form v-if="!showOtpInput" @submit.prevent="handleLogin" :model="loginForm">
         <el-form-item label="Имя пользователя">
           <el-input v-model="loginForm.username" placeholder="Введите имя пользователя" :disabled="loading" />
@@ -90,7 +90,6 @@ function resetLogin() {
         <el-alert v-if="error" :title="error" type="error" :closable="false" style="margin-top: 15px" />
       </el-form>
 
-      <!-- Форма OTP -->
       <el-form v-else @submit.prevent="handleOtpVerify" :model="otpForm">
   <el-alert title="Введите код из консоли сервера" type="info" :closable="false" style="margin-bottom: 20px">
     <template #default>
@@ -102,7 +101,6 @@ function resetLogin() {
     <el-input v-model="otpForm.code" placeholder="6-значный код" maxlength="6" :disabled="loading" style="text-align: center; font-size: 1.2em; letter-spacing: 4px" />
   </el-form-item>
 
-  <!-- Контейнер для кнопки "Назад" и "Подтвердить" -->
   <div style="display: flex; justify-content: space-between;">
     <el-button type="primary" native-type="submit" :loading="loading" style="width: 48%">Подтвердить</el-button>
     <el-button @click="resetLogin" style="width: 48%">Назад</el-button>

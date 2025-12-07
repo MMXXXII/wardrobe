@@ -58,7 +58,6 @@ async function fetchStats() {
 
 async function onAdd() {
   try {
-    // Получаем доступное количество товара
     const product = products.value.find(p => p.id === toAdd.product);
     if (!product) {
       ElMessage.error('Товар не найден');
@@ -70,7 +69,6 @@ async function onAdd() {
       return;
     }
 
-    // Форматируем дату
     const formattedDate = toAdd.order_date ? new Date(toAdd.order_date).toLocaleDateString('en-CA') : new Date().toLocaleDateString('en-CA');
 
     await axios.post('/orders/', {
@@ -86,9 +84,6 @@ async function onAdd() {
     ElMessage.error('Ошибка добавления');
   }
 }
-
-
-
 
 async function onRemove(o) {
   try {
@@ -107,7 +102,6 @@ function onEditClick(o) {
 
 async function onUpdate() {
   try {
-    // Получаем доступное количество товара
     const product = products.value.find(p => p.id === toEdit.product);
     if (!product) {
       ElMessage.error('Товар не найден');
@@ -119,7 +113,6 @@ async function onUpdate() {
       return;
     }
 
-    // Форматируем дату
     const formattedDate = toEdit.order_date ? 
       new Date(toEdit.order_date).toISOString().split('T')[0] : 
       new Date().toISOString().split('T')[0]
@@ -139,6 +132,23 @@ async function onUpdate() {
   }
 }
 
+async function exportData(format) {
+  if (!isAdmin.value) {
+    ElMessage.error('Только администратор может экспортировать данные')
+    return
+  }
+
+  try {
+    const response = await axios.get(`/orders/export/?type=${format}`, { responseType: 'blob' })
+    const blob = response.data
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `Orders.${format === 'excel' ? 'xlsx' : 'docx'}`
+    link.click()
+  } catch {
+    ElMessage.error('Ошибка экспорта')
+  }
+}
 
 onMounted(async () => {
   await fetchUser()
@@ -161,6 +171,12 @@ onMounted(async () => {
           <el-statistic title="Общая сумма" :value="orderStats.total_sum || 0" suffix="₽" />
         </el-col>
       </el-row>
+    </el-card>
+
+    <el-card v-if="isAdmin">
+      <h3>Экспорт</h3>
+      <el-button type="primary" @click="exportData('excel')">Экспорт в Excel</el-button>
+      <el-button type="primary" @click="exportData('word')" style="margin-left: 10px;">Экспорт в Word</el-button>
     </el-card>
 
     <el-card>

@@ -97,6 +97,23 @@ async function onRemove(c) {
     ElMessage.error('Ошибка удаления')
   }
 }
+async function exportData(format) {
+  if (!isAdmin.value) {
+    ElMessage.error('Только администратор может экспортировать данные')
+    return
+  }
+
+  try {
+    const response = await axios.get(`/customers/export/?type=${format}`, { responseType: 'blob' })
+    const blob = response.data
+    const link = document.createElement('a')
+    link.href = URL.createObjectURL(blob)
+    link.download = `Customers.${format === 'excel' ? 'xlsx' : 'docx'}`
+    link.click()
+  } catch {
+    ElMessage.error('Ошибка экспорта')
+  }
+}
 
 onMounted(async () => {
   await fetchUser()
@@ -124,6 +141,12 @@ onMounted(async () => {
           <el-statistic title="Пользователей" :value="customerStats.count_users || 0" />
         </el-col>
       </el-row>
+    </el-card>
+
+    <el-card v-if="isAdmin">
+      <h3>Экспорт</h3>
+      <el-button type="primary" @click="exportData('excel')">Экспорт в Excel</el-button>
+      <el-button type="primary" @click="exportData('word')" style="margin-left: 10px;">Экспорт в Word</el-button>
     </el-card>
 
     <el-input v-model="searchQuery" placeholder="Поиск покупателей..." style="margin: 20px 0;" @input="filterCustomers" />
