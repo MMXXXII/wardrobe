@@ -1,134 +1,122 @@
 <template>
-  <div class="container py-4">
+  <div id="app">
+    <nav v-if="showNav" class="main-nav">
+      <a v-for="link in leftLinks" :key="link.path" v-show="!link.admin || userStore.user?.is_superuser"
+        @click.prevent="router.push(link.path)" class="nav-link" :class="{ active: route.path === link.path }">
+        {{ link.label }}
+      </a>
 
-    <!-- Новый красивый хедер -->
-    <header v-if="$route.path !== '/login'" class="main-app-header">
-      <div class="main-app-header-content">
+      <div class="spacer"></div>
 
-        <div class="nav-left">
-          <router-link class="nav-item" to="/categories">Категории</router-link>
-          <router-link class="nav-item" to="/products">Товары</router-link>
-          <router-link class="nav-item" to="/stores">Магазины</router-link>
-          <router-link class="nav-item" to="/orders">Заказы</router-link>
-          <router-link v-if="userStore.user && userStore.user.is_superuser" class="nav-item" to="/customers">
-            Покупатели
-          </router-link>
-        </div>
+      <a @click.prevent="router.push('/profile')" class="nav-link profile-link"
+        :class="{ active: route.path === '/profile' }">
+        {{ userStore.user?.username || userStore.user?.email || 'Профиль' }}
+      </a>
 
-        <div class="nav-right">
-          <router-link v-if="userStore.isAuthenticated" class="profile-btn" to="/profile">
-            <i class="bi bi-person-fill"></i>
-          </router-link>
-        </div>
-
-      </div>
-    </header>
-
+      <a v-if="userStore.user?.is_superuser" @click.prevent="openDjangoAdmin" class="nav-link admin-link">
+        Админка
+      </a>
+    </nav>
     <router-view />
   </div>
 </template>
 
 <script setup>
-import { onMounted } from 'vue'
+import { computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from './stores/userStore'
+import axios from 'axios'
 
+const route = useRoute()
+const router = useRouter()
 const userStore = useUserStore()
 
+const leftLinks = [
+  { path: '/categories', label: 'Категории' },
+  { path: '/products', label: 'Товары' },
+  { path: '/stores', label: 'Магазины' },
+  { path: '/orders', label: 'Заказы' },
+  { path: '/customers', label: 'Покупатели', admin: true }
+]
+
+const showNav = computed(() => route.path !== '/login' && userStore.isAuthenticated)
+
+const openDjangoAdmin = () => {
+  window.open('http://localhost:8000/admin/', '_blank')
+}
+
+
 onMounted(async () => {
-  // Гарантировано загрузим профиль пользователя на старте
-  if (!userStore.user) {
+  if (!userStore.user && userStore.token) {
     try {
-      await userStore.getUserInfo()
-    } catch (e) {
-      // Если не авторизован — user останется null и Покупатели не покажутся
-    }
+      userStore.user = (await axios.get('/userprofile/info/')).data
+    } catch { }
   }
 })
 </script>
 
-<style scoped>
-/* Главный хедер в едином стиле */
-.main-app-header {
-  background: linear-gradient(135deg, #fff5f8 0%, #f5f0ff 100%);
-  padding: 26px 32px;
-  border-radius: 24px;
-  margin-bottom: 36px;
-  box-shadow: 0 12px 45px rgba(255, 20, 147, 0.08);
-  animation: headerDrop 0.6s ease;
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', 'Roboto', 'Arial', sans-serif;
 }
 
-/* Анимация – как в Orders Page */
-@keyframes headerDrop {
-  from {
-    opacity: 0;
-    transform: translateY(-28px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+#app {
+  min-height: 100vh;
+  background: #f5f5f5;
 }
 
-.main-app-header-content {
+.main-nav {
+  background: white;
+  padding: 15px 30px 15px 150px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 25px;
 }
 
-/* Навигация */
-.nav-left {
-  display: flex;
-  gap: 28px;
+.spacer {
+  flex-grow: 1;
+  min-width: 0;
 }
 
-/* Ссылки */
-.nav-item {
+.nav-link {
   text-decoration: none;
+  color: #333;
   font-weight: 700;
-  font-size: 1.15rem;
-  color: #d63384;
-  padding-bottom: 3px;
-  position: relative;
-  transition: 0.25s;
-}
-
-.nav-item:hover {
-  color: #ff1493;
-}
-
-.nav-item::after {
-  content: '';
-  position: absolute;
-  bottom: -6px;
-  left: 0;
-  width: 0;
-  height: 3px;
-  background: linear-gradient(135deg, #ff6b9d, #d63384);
+  padding: 8px 16px;
   border-radius: 4px;
-  transition: width 0.3s ease;
+  transition: all 0.3s;
+  cursor: pointer;
+  font-size: 0.95rem;
 }
 
-.nav-item:hover::after {
-  width: 100%;
+.nav-link:hover {
+  background: #f0f0f0;
+  color: #409eff;
 }
 
-/* Кнопка профиля — стиль карточек */
-.profile-btn {
-  width: 48px;
-  height: 48px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, #ff6b9d, #d63384);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.nav-link.active {
+  color: #409eff;
+  background: #ecf5ff;
+}
+
+.profile-link {
+  font-weight: 800;
+  font-size: 1rem;
+}
+
+.admin-link {
+  background: #dc3545;
   color: white;
-  font-size: 1.35rem;
-  transition: 0.25s;
-  box-shadow: 0 5px 18px rgba(255, 20, 147, 0.25);
+  padding: 10px 20px;
 }
 
-.profile-btn:hover {
-  transform: scale(1.12);
-  box-shadow: 0 10px 26px rgba(255, 20, 147, 0.35);
+.admin-link:hover {
+  background: #c82333;
+  color: white;
 }
 </style>

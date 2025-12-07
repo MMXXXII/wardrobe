@@ -17,39 +17,46 @@ const routes = [
   },
   { 
     path: "/categories", 
+    name: "categories",  // ← ДОБАВИЛИ name
     component: Categories,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/stores", 
+    name: "stores",      // ← ДОБАВИЛИ name
     component: Stores,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/products", 
+    name: "products",    // ← ДОБАВИЛИ name
     component: Products,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/customers", 
+    name: "customers",   // ← ДОБАВИЛИ name
     component: Customers,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/orders", 
+    name: "orders",      // ← ДОБАВИЛИ name
     component: Orders,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/profile", 
+    name: "profile",     // ← ДОБАВИЛИ name
     component: Profile,
     meta: { requiresAuth: true, requiresOtp: true }
   },
   { 
     path: "/login", 
+    name: "login",
     component: Login 
   },
-  // Перенаправления для старых путей (опционально)
+  // перенаправления...
   {
     path: "/brands",
     redirect: "/categories"
