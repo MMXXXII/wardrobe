@@ -10,25 +10,18 @@ import time
 import random
 import string
 from rest_framework import serializers
+from wardrobe.models import Category
 
-from wardrobe.models import Category, Store, Product, Customer, Order, UserProfile
 
-
-# -----------------------------
-# Главная страница магазина
-# -----------------------------
 class ShowStoreView(TemplateView):
     template_name = "wardrobe/show_store.html"
 
     def get_context_data(self, **kwargs: Any) -> dict[str, Any]:
         context = super().get_context_data(**kwargs)
-        # Показываем категории вместо брендов
         context['categories'] = Category.objects.all()
         return context
 
-# -----------------------------
-# Права для OTP
-# -----------------------------
+
 class OTPRequired(BasePermission):
     def has_permission(self, request, view):
         otp_good = cache.get(f'otp_good_{request.user.id}', False)
@@ -40,9 +33,7 @@ class OTPRequired(BasePermission):
             return False
         return True
 
-# -----------------------------
-# User + OTP
-# -----------------------------
+
 class UserProfileViewSet(GenericViewSet):
     permission_classes = [IsAuthenticated]
 
@@ -73,7 +64,6 @@ class UserProfileViewSet(GenericViewSet):
                 {'otp_code': otp_code, 'timestamp': time.time(), 'password': serializer.validated_data['password']}, 
                 300
             )
-            print(f'[OTP] Код для {user.username}: {otp_code}')
             return Response({'is_authenticated': False, 'username': user.username, 'email': user.email, 'otp_sent': True})
         return Response({'is_authenticated': False, 'error': 'Неверные учетные данные'}, status=400)
 

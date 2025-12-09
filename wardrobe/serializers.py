@@ -2,9 +2,6 @@ from rest_framework import serializers
 from django.contrib.auth.models import User
 from .models import Category, Store, Product, Customer, Order, UserProfile
 
-# -----------------------------
-# Сериализаторы для категории одежды
-# -----------------------------
 class CategorySerializer(serializers.ModelSerializer):
     class Meta:
         model = Category
@@ -18,9 +15,6 @@ class CategorySerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-# -----------------------------
-# Сериализаторы для магазинов
-# -----------------------------
 class StoreSerializer(serializers.ModelSerializer):
     class Meta:
         model = Store
@@ -34,9 +28,6 @@ class StoreSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-# -----------------------------
-# Сериализаторы для товаров
-# -----------------------------
 class ProductSerializer(serializers.ModelSerializer):
     category_name = serializers.StringRelatedField(source='category', read_only=True)
     store_name = serializers.StringRelatedField(source='store', read_only=True)
@@ -47,14 +38,7 @@ class ProductSerializer(serializers.ModelSerializer):
                   'size', 'price', 'color', 'image', 'description', 'quantity']
 
 
-# -----------------------------
-# Сериализаторы для покупателей
-# -----------------------------
 class CustomerSerializer(serializers.ModelSerializer):
-    """
-    Сериализатор для User (покупателя).
-    Показывает User с информацией о статусе и профиле.
-    """
     age = serializers.SerializerMethodField()
     
     class Meta:
@@ -66,7 +50,6 @@ class CustomerSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'is_staff']
     
     def get_age(self, obj):
-        """Получаем возраст из профиля пользователя"""
         try:
             profile = UserProfile.objects.get(user=obj)
             return profile.age
@@ -74,7 +57,6 @@ class CustomerSerializer(serializers.ModelSerializer):
             return None
     
     def create(self, validated_data):
-        """Создаём User и профиль"""
         user = User.objects.create_user(
             username=validated_data['username'],
             email=validated_data.get('email', ''),
@@ -83,7 +65,6 @@ class CustomerSerializer(serializers.ModelSerializer):
             is_staff=validated_data.get('is_superuser', False)
         )
         
-        # Создаём профиль с возрастом если указан
         age = self.context.get('request').data.get('age')
         if age:
             UserProfile.objects.create(user=user, age=age)
@@ -93,7 +74,6 @@ class CustomerSerializer(serializers.ModelSerializer):
         return user
     
     def update(self, instance, validated_data):
-        """Обновляем User и профиль"""
         instance.username = validated_data.get('username', instance.username)
         instance.email = validated_data.get('email', instance.email)
         if 'password' in validated_data and validated_data['password']:
@@ -102,7 +82,6 @@ class CustomerSerializer(serializers.ModelSerializer):
         instance.is_staff = validated_data.get('is_superuser', instance.is_superuser)
         instance.save()
         
-        # Обновляем профиль
         age = self.context.get('request').data.get('age')
         if age is not None:
             profile, _ = UserProfile.objects.get_or_create(user=instance)
@@ -112,9 +91,6 @@ class CustomerSerializer(serializers.ModelSerializer):
         return instance
 
 
-# -----------------------------
-# Сериализаторы для заказов
-# -----------------------------
 class OrderSerializer(serializers.ModelSerializer):
     customer = serializers.PrimaryKeyRelatedField(
         queryset=Customer.objects.all(),
@@ -149,13 +125,11 @@ class OrderSerializer(serializers.ModelSerializer):
         product = validated_data.get('product')
         quantity = validated_data.get('quantity', 1)
 
-        # Проверка наличия товара
         if product.quantity < quantity:
             raise serializers.ValidationError(
                 f"Недостаточно товара на складе. Доступно: {product.quantity}"
             )
 
-        # Создаём или получаем Customer для текущего пользователя и магазина
         if user:
             profile, _ = UserProfile.objects.get_or_create(user=user)
             customer, _ = Customer.objects.get_or_create(
@@ -170,13 +144,10 @@ class OrderSerializer(serializers.ModelSerializer):
             )
             validated_data['customer'] = customer
 
-        # Рассчитываем общую сумму
         validated_data['total_price'] = self._calculate_total(product, quantity)
 
-        # Создаем заказ
         order = super().create(validated_data)
 
-        # Уменьшаем количество товара на складе
         if order.status in ['sold', 'pending']:
             product.quantity -= quantity
             product.save()
@@ -192,12 +163,10 @@ class OrderSerializer(serializers.ModelSerializer):
         new_status = validated_data.get('status', old_status)
         new_quantity = validated_data.get('quantity', old_quantity)
 
-        # Возвращаем старое количество обратно в старый товар
         if old_status in ['sold', 'pending']:
             old_product.quantity += old_quantity
             old_product.save()
 
-        # Списываем новое количество из нового товара
         if new_status in ['sold', 'pending']:
             if product.quantity < new_quantity:
                 raise serializers.ValidationError(
@@ -206,7 +175,6 @@ class OrderSerializer(serializers.ModelSerializer):
             product.quantity -= new_quantity
             product.save()
 
-        # Обновляем заказ
         instance.product = product
         instance.customer = validated_data.get('customer', instance.customer)
         instance.quantity = new_quantity
@@ -218,9 +186,6 @@ class OrderSerializer(serializers.ModelSerializer):
         return instance
 
 
-# -----------------------------
-# Сериализатор для профиля пользователя
-# -----------------------------
 class UserProfileSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     email = serializers.EmailField(source='user.email', read_only=True)

@@ -6,11 +6,9 @@ from .models import UserProfile, Customer, Store
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
-        # Создаем профиль пользователя
         UserProfile.objects.create(user=instance)
 
-        # Создаем покупателя для магазина по умолчанию
-        default_store = Store.objects.first()  # можно выбрать конкретный магазин
+        default_store = Store.objects.first()
         if default_store:
             Customer.objects.get_or_create(
                 user=instance,

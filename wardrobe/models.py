@@ -47,7 +47,7 @@ class Product(models.Model):
     color = models.CharField("Цвет", max_length=50, null=True, blank=True)
     image = models.ImageField("Фото товара", upload_to="products", null=True, blank=True)
     description = models.TextField("Описание", null=True, blank=True)
-    quantity = models.PositiveIntegerField("Количество", default=0)  # Добавляем поле для количества товара
+    quantity = models.PositiveIntegerField("Количество", default=0)
 
     class Meta:
         verbose_name = "Товар"
@@ -58,7 +58,7 @@ class Product(models.Model):
     
     def is_available(self):
         """Проверяет, доступен ли товар для покупки (не продан)"""
-        return self.quantity > 0  # Изменено на проверку количества товара
+        return self.quantity > 0 
 
 
 
