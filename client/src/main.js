@@ -9,7 +9,6 @@ import 'element-plus/dist/index.css'
 import axios from 'axios'
 import Cookies from 'js-cookie'
 
-// выставляем CSRF заголовок для Django
 axios.defaults.xsrfCookieName = 'csrftoken'
 axios.defaults.xsrfHeaderName = 'X-CSRFToken'
 axios.defaults.headers.common['X-CSRFToken'] = Cookies.get('csrftoken')

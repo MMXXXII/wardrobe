@@ -12,23 +12,23 @@ const otpForm = reactive({ code: '' })
 const error = ref('')
 const loading = ref(false)
 const showOtpInput = ref(false)
+const qrCodeImage = ref('')
+const totpKey = ref('')
 
 async function handleLogin() {
   error.value = ''
   loading.value = true
 
-  try {
-    const response = await userStore.login(loginForm.username, loginForm.password)
-    
-    if (response.otp_sent) {
-      showOtpInput.value = true
-      ElMessage.info('OTP отправлен, проверьте консоль сервера')
-    }
-  } catch (err) {
-    error.value = err.message || 'Ошибка авторизации'
-  } finally {
-    loading.value = false
+  const response = await userStore.login(loginForm.username, loginForm.password)
+  
+  if (response.otp_sent) {
+    showOtpInput.value = true
+    qrCodeImage.value = response.qr_code
+    totpKey.value = response.totp_key
+    ElMessage.info('Отсканируйте QR-код в Google Authenticator')
   }
+
+  loading.value = false
 }
 
 async function handleOtpVerify() {
@@ -40,20 +40,16 @@ async function handleOtpVerify() {
   error.value = ''
   loading.value = true
 
-  try {
-    const success = await userStore.verifyOtp(otpForm.code)
-    
-    if (success) {
-      ElMessage.success('Вход выполнен')
-      router.push('/categories')
-    } else {
-      error.value = 'Неверный OTP код'
-    }
-  } catch (err) {
-    error.value = err.message || 'Ошибка проверки OTP'
-  } finally {
-    loading.value = false
+  const success = await userStore.verifyOtp(otpForm.code)
+  
+  if (success) {
+    ElMessage.success('Вход выполнен')
+    router.push('/categories')
+  } else {
+    error.value = 'Неверный OTP код'
   }
+
+  loading.value = false
 }
 
 function resetLogin() {
@@ -61,6 +57,8 @@ function resetLogin() {
   otpForm.code = ''
   error.value = ''
   loginForm.password = ''
+  qrCodeImage.value = ''
+  totpKey.value = ''
 }
 </script>
 
@@ -72,7 +70,6 @@ function resetLogin() {
           <h2>{{ showOtpInput ? 'Подтверждение' : 'Авторизация' }}</h2>
         </div>
       </template>
-
 
       <el-form v-if="!showOtpInput" @submit.prevent="handleLogin" :model="loginForm">
         <el-form-item label="Имя пользователя">
@@ -91,24 +88,36 @@ function resetLogin() {
       </el-form>
 
       <el-form v-else @submit.prevent="handleOtpVerify" :model="otpForm">
-  <el-alert title="Введите код из консоли сервера" type="info" :closable="false" style="margin-bottom: 20px">
-    <template #default>
-      <p style="margin: 5px 0 0 0; font-size: 0.9em">{{ userStore.user?.email }}</p>
-    </template>
-  </el-alert>
+        <el-alert title="Введите код из Google Authenticator" type="info" :closable="false" style="margin-bottom: 20px">
+          <template #default>
+            <p style="margin: 5px 0 0 0; font-size: 0.9em">{{ userStore.user?.email }}</p>
+          </template>
+        </el-alert>
 
-  <el-form-item label="OTP код">
-    <el-input v-model="otpForm.code" placeholder="6-значный код" maxlength="6" :disabled="loading" style="text-align: center; font-size: 1.2em; letter-spacing: 4px" />
-  </el-form-item>
+        <div v-if="qrCodeImage" class="text-center" style="margin-bottom: 20px;">
+          <img :src="qrCodeImage" alt="QR Code" style="max-width: 100%; height: auto; border-radius: 8px;">
+          <div style="margin-top: 10px; font-size: 0.85em; color: #666;">
+            Отсканируйте QR-код в Google Authenticator
+          </div>
+          <div style="margin-top: 10px;">
+            <div style="font-size: 0.85em; color: #666;">Или введите ключ вручную:</div>
+            <div style="margin-top: 5px; word-break: break-all; font-family: monospace; font-size: 11px; background: #f5f5f5; padding: 8px; border-radius: 4px;">
+              {{ totpKey }}
+            </div>
+          </div>
+        </div>
 
-  <div style="display: flex; justify-content: space-between;">
-    <el-button type="primary" native-type="submit" :loading="loading" style="width: 48%">Подтвердить</el-button>
-    <el-button @click="resetLogin" style="width: 48%">Назад</el-button>
-  </div>
+        <el-form-item label="OTP код">
+          <el-input v-model="otpForm.code" placeholder="6-значный код" maxlength="6" :disabled="loading" style="text-align: center; font-size: 1.2em; letter-spacing: 4px" />
+        </el-form-item>
 
-  <el-alert v-if="error" :title="error" type="error" :closable="false" style="margin-top: 15px" />
-</el-form>
+        <div style="display: flex; justify-content: space-between;">
+          <el-button type="primary" native-type="submit" :loading="loading" style="width: 48%">Подтвердить</el-button>
+          <el-button @click="resetLogin" style="width: 48%">Назад</el-button>
+        </div>
 
+        <el-alert v-if="error" :title="error" type="error" :closable="false" style="margin-top: 15px" />
+      </el-form>
     </el-card>
   </div>
 </template>

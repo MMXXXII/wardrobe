@@ -78,15 +78,8 @@ const router = createRouter({
   routes,
 })
 
-let initialized = false
-
 router.beforeEach(async (to, from, next) => {
   const userStore = useUserStore()
-  
-  if (!initialized) {
-    initialized = true
-    const restored = userStore.initializeFromStorage()
-  }
   
   if (to.meta.requiresAuth) {
     if (!userStore.isAuthenticated) {

@@ -1,9 +1,11 @@
 from django.db import models
 from django.contrib.auth.models import User
+from django.dispatch import receiver
+from django.db.models.signals import post_save
+import pyotp
 
 
 class Category(models.Model):
-    """Категория одежды (аналог Genre)"""
     name = models.TextField("Категория")
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Пользователь")
     
@@ -16,7 +18,6 @@ class Category(models.Model):
 
 
 class Store(models.Model):
-    """Магазин (аналог Library)"""
     name = models.TextField("Название магазина")
     address = models.TextField("Адрес")
     user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, verbose_name="Пользователь")
@@ -28,8 +29,8 @@ class Store(models.Model):
     def __str__(self) -> str:
         return self.name
 
+
 class Product(models.Model):
-    """Товар/Одежда (аналог Book)"""
     SIZE_CHOICES = [
         ('XS', 'XS'),
         ('S', 'S'),
@@ -57,13 +58,10 @@ class Product(models.Model):
         return f"{self.name} ({self.size})"
     
     def is_available(self):
-        """Проверяет, доступен ли товар для покупки (не продан)"""
-        return self.quantity > 0 
-
+        return self.quantity > 0
 
 
 class Customer(models.Model):
-    """Покупатель (аналог Member)"""
     first_name = models.TextField("Имя")
     last_name = models.TextField("Фамилия", null=True, blank=True)
     phone = models.CharField("Телефон", max_length=20, null=True, blank=True)
@@ -81,7 +79,6 @@ class Customer(models.Model):
 
 
 class Order(models.Model):
-    """Заказ/Продажа (аналог Loan)"""
     STATUS_CHOICES = [
         ('pending', 'Ожидает'),
         ('sold', 'Продано'),
@@ -113,16 +110,11 @@ class Order(models.Model):
         super().save(*args, **kwargs)
 
 
-    def __str__(self):
-        return f"Order #{self.order_id}"
-
-
-
 class UserProfile(models.Model):
-    """Расширение модели User для хранения дополнительной информации"""
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='profile')
     age = models.IntegerField(null=True, blank=True, verbose_name='Возраст')
     address = models.TextField("Адрес доставки", null=True, blank=True)
+    totp_key = models.CharField(max_length=128, null=True, blank=True, default=pyotp.random_hex)
     
     class Meta:
         verbose_name = 'Профиль пользователя'
@@ -130,3 +122,13 @@ class UserProfile(models.Model):
     
     def __str__(self):
         return f'Профиль {self.user.username}'
+
+    def save(self, *args, **kwargs):
+        if self.id is None and not self.totp_key:
+            self.totp_key = pyotp.random_base32()
+        super().save(*args, **kwargs)
+
+    @receiver(post_save, sender=User)
+    def create_user_profile(sender, instance, created, **kwargs):
+        if created:
+            UserProfile.objects.create(user=instance)

@@ -2,16 +2,17 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
+import { useUserStore } from '../stores/userStore'
 
+const userStore = useUserStore()
 const categories = ref([])
 const categoryStats = ref(null)
 const toAdd = reactive({ name: '' })
 const toEdit = reactive({ id: null, name: '' })
 const filterName = ref('')
-const user = ref(null)
 const editVisible = ref(false)
 
-const isAdmin = computed(() => user.value?.is_superuser)
+const isAdmin = computed(() => userStore.isSuperUser)
 
 const filteredCategories = computed(() => {
   return categories.value.filter(c =>
@@ -19,89 +20,57 @@ const filteredCategories = computed(() => {
   )
 })
 
-async function fetchUser() {
-  try {
-    user.value = (await axios.get('/userprofile/info/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки пользователя')
-  }
-}
-
-async function fetchAll() {
-  try {
-    categories.value = (await axios.get('/categories/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки категорий')
-  }
-}
-
-async function fetchStats() {
-  try {
-    categoryStats.value = (await axios.get('/categories/stats/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки статистики')
-  }
+async function loadData() {
+  const [categoriesRes, statsRes] = await Promise.all([
+    axios.get('/categories/'),
+    axios.get('/categories/stats/')
+  ])
+  categories.value = categoriesRes.data
+  categoryStats.value = statsRes.data
 }
 
 async function onAdd() {
-  try {
-    await axios.post('/categories/', { ...toAdd })
-    toAdd.name = ''
-    await Promise.all([fetchAll(), fetchStats()])
-    ElMessage.success('Категория добавлена')
-  } catch {
-    ElMessage.error('Ошибка добавления')
-  }
+  await axios.post('/categories/', { ...toAdd })
+  toAdd.name = ''
+  await loadData()
+  ElMessage.success('Категория добавлена')
 }
 
 async function onRemove(c) {
-  try {
-    await axios.delete(`/categories/${c.id}/`)
-    await Promise.all([fetchAll(), fetchStats()])
-    ElMessage.success('Категория удалена')
-  } catch {
-    ElMessage.error('Ошибка удаления')
-  }
+  await axios.delete(`/categories/${c.id}/`)
+  await loadData()
+  ElMessage.success('Категория удалена')
 }
 
-function onEditClick(c) {
+function openEdit(c) {
   toEdit.id = c.id
   toEdit.name = c.name
   editVisible.value = true
 }
 
-async function onUpdate() {
-  try {
-    await axios.put(`/categories/${toEdit.id}/`, { name: toEdit.name })
-    await Promise.all([fetchAll(), fetchStats()])
-    editVisible.value = false
-    ElMessage.success('Категория обновлена')
-  } catch {
-    ElMessage.error('Ошибка обновления')
-  }
+async function saveForm() {
+  await axios.put(`/categories/${toEdit.id}/`, { name: toEdit.name })
+  await loadData()
+  editVisible.value = false
+  ElMessage.success('Категория обновлена')
 }
 
-async function exportData(format) {
+async function exportFile(format) {
   if (!isAdmin.value) {
     ElMessage.error('Только администратор может экспортировать данные')
     return
   }
 
-  try {
-    const response = await axios.get(`/categories/export/?type=${format}`, { responseType: 'blob' })
-    const blob = response.data
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `Categories.${format === 'excel' ? 'xlsx' : 'docx'}`
-    link.click()
-  } catch {
-    ElMessage.error('Ошибка экспорта')
-  }
+  const response = await axios.get(`/categories/export/?type=${format}`, { responseType: 'blob' })
+  const blob = response.data
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `Categories.${format === 'excel' ? 'xlsx' : 'docx'}`
+  link.click()
 }
 
 onMounted(async () => {
-  await fetchUser()
-  await Promise.all([fetchAll(), fetchStats()])
+  await loadData()
 })
 </script>
 
@@ -115,11 +84,10 @@ onMounted(async () => {
       <el-statistic title="Всего категорий" :value="categoryStats.count || 0" />
     </el-card>
 
-    <!-- Export buttons (only visible for admin) -->
     <el-card v-if="isAdmin">
       <h3>Экспорт</h3>
-      <el-button type="primary" @click="exportData('excel')">Экспорт в Excel</el-button>
-      <el-button type="primary" @click="exportData('word')" style="margin-left: 10px;">Экспорт в Word</el-button>
+      <el-button type="primary" @click="exportFile('excel')">Экспорт в Excel</el-button>
+      <el-button type="primary" @click="exportFile('word')" style="margin-left: 10px;">Экспорт в Word</el-button>
     </el-card>
 
     <el-card v-if="isAdmin">
@@ -137,7 +105,7 @@ onMounted(async () => {
       <el-table-column prop="name" label="Название" />
       <el-table-column label="Действия" width="220" v-if="isAdmin">
         <template #default="{ row }">
-          <el-button size="small" @click="onEditClick(row)" class="action-btn">Изменить</el-button>
+          <el-button size="small" @click="openEdit(row)" class="action-btn">Изменить</el-button>
           <el-button size="small" type="danger" @click="onRemove(row)" class="action-btn">Удалить</el-button>
         </template>
       </el-table-column>
@@ -151,7 +119,7 @@ onMounted(async () => {
       </el-form>
       <template #footer>
         <el-button @click="editVisible = false">Отмена</el-button>
-        <el-button type="primary" @click="onUpdate">Сохранить</el-button>
+        <el-button type="primary" @click="saveForm">Сохранить</el-button>
       </template>
     </el-dialog>
   </div>

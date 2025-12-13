@@ -2,18 +2,19 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
+import { useUserStore } from '../stores/userStore'
 
+const userStore = useUserStore()
 const customers = ref([])
 const filteredCustomers = ref([])
 const customerStats = ref(null)
 const searchQuery = ref('')
-const customerToAdd = reactive({ username: '', email: '', password: '', age: null, is_superuser: false })
-const customerToEdit = reactive({ id: null, username: '', email: '', password: '', age: null, is_superuser: false })
-const user = ref(null)
+const toAdd = reactive({ username: '', email: '', password: '', age: null, is_superuser: false })
+const toEdit = reactive({ id: null, username: '', email: '', password: '', age: null, is_superuser: false })
 const addVisible = ref(false)
 const editVisible = ref(false)
 
-const isAdmin = computed(() => user.value?.is_superuser)
+const isAdmin = computed(() => userStore.isSuperUser)
 
 function filterCustomers() {
   const query = searchQuery.value.toLowerCase()
@@ -22,103 +23,87 @@ function filterCustomers() {
   )
 }
 
-async function fetchUser() {
-  try {
-    user.value = (await axios.get('/userprofile/info/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки пользователя')
-  }
+async function loadData() {
+  const [customersRes, statsRes] = await Promise.all([
+    axios.get('/customers/'),
+    axios.get('/customers/stats/')
+  ])
+  customers.value = customersRes.data
+  customerStats.value = statsRes.data
+  filterCustomers()
 }
 
-async function fetchCustomers() {
-  try {
-    customers.value = (await axios.get('/customers/')).data
-    filterCustomers()
-  } catch {
-    ElMessage.error('Ошибка загрузки покупателей')
-  }
-}
-
-async function fetchStats() {
-  try {
-    customerStats.value = (await axios.get('/customers/stats/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки статистики')
-  }
-}
-
-function showAddModal() {
-  Object.assign(customerToAdd, { username: '', email: '', password: '', age: null, is_superuser: false })
+function openAdd() {
+  toAdd.username = ''
+  toAdd.email = ''
+  toAdd.password = ''
+  toAdd.age = null
+  toAdd.is_superuser = false
   addVisible.value = true
 }
 
-async function onAddCustomer() {
-  try {
-    await axios.post('/customers/', { ...customerToAdd })
-    await Promise.all([fetchCustomers(), fetchStats()])
-    addVisible.value = false
-    ElMessage.success('Покупатель добавлен')
-  } catch {
-    ElMessage.error('Ошибка добавления')
-  }
+async function saveAdd() {
+  await axios.post('/customers/', {
+    username: toAdd.username,
+    email: toAdd.email,
+    password: toAdd.password,
+    age: toAdd.age,
+    is_superuser: toAdd.is_superuser
+  })
+  await loadData()
+  addVisible.value = false
+  ElMessage.success('Покупатель добавлен')
 }
 
-function onEditClick(c) {
-  Object.assign(customerToEdit, { ...c, password: '' })
+function openEdit(c) {
+  toEdit.id = c.id
+  toEdit.username = c.username
+  toEdit.email = c.email
+  toEdit.password = ''
+  toEdit.age = c.age
+  toEdit.is_superuser = c.is_superuser
   editVisible.value = true
 }
 
-async function onUpdateCustomer() {
-  try {
-    const payload = {
-      username: customerToEdit.username,
-      email: customerToEdit.email,
-      age: customerToEdit.age,
-      is_superuser: customerToEdit.is_superuser
-    }
-    if (customerToEdit.password) {
-      payload.password = customerToEdit.password
-    }
-    await axios.put(`/customers/${customerToEdit.id}/`, payload)
-    await Promise.all([fetchCustomers(), fetchStats()])
-    editVisible.value = false
-    ElMessage.success('Покупатель обновлен')
-  } catch {
-    ElMessage.error('Ошибка обновления')
+async function saveForm() {
+  const payload = {
+    username: toEdit.username,
+    email: toEdit.email,
+    age: toEdit.age,
+    is_superuser: toEdit.is_superuser
   }
+  if (toEdit.password) {
+    payload.password = toEdit.password
+  }
+  await axios.put(`/customers/${toEdit.id}/`, payload)
+  await loadData()
+  editVisible.value = false
+  ElMessage.success('Покупатель обновлен')
 }
 
 async function onRemove(c) {
-  try {
-    await axios.delete(`/customers/${c.id}/`)
-    await Promise.all([fetchCustomers(), fetchStats()])
-    ElMessage.success('Покупатель удален')
-  } catch {
-    ElMessage.error('Ошибка удаления')
-  }
+  await axios.delete(`/customers/${c.id}/`)
+  await loadData()
+  ElMessage.success('Покупатель удален')
 }
-async function exportData(format) {
+
+async function exportFile(format) {
   if (!isAdmin.value) {
     ElMessage.error('Только администратор может экспортировать данные')
     return
   }
 
-  try {
-    const response = await axios.get(`/customers/export/?type=${format}`, { responseType: 'blob' })
-    const blob = response.data
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `Customers.${format === 'excel' ? 'xlsx' : 'docx'}`
-    link.click()
-  } catch {
-    ElMessage.error('Ошибка экспорта')
-  }
+  const response = await axios.get(`/customers/export/?type=${format}`, { responseType: 'blob' })
+  const blob = response.data
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `Customers.${format === 'excel' ? 'xlsx' : 'docx'}`
+  link.click()
 }
 
 onMounted(async () => {
-  await fetchUser()
   if (isAdmin.value) {
-    await Promise.all([fetchCustomers(), fetchStats()])
+    await loadData()
   }
 })
 </script>
@@ -145,12 +130,12 @@ onMounted(async () => {
 
     <el-card v-if="isAdmin">
       <h3>Экспорт</h3>
-      <el-button type="primary" @click="exportData('excel')">Экспорт в Excel</el-button>
-      <el-button type="primary" @click="exportData('word')" style="margin-left: 10px;">Экспорт в Word</el-button>
+      <el-button type="primary" @click="exportFile('excel')">Экспорт в Excel</el-button>
+      <el-button type="primary" @click="exportFile('word')" style="margin-left: 10px;">Экспорт в Word</el-button>
     </el-card>
 
     <el-input v-model="searchQuery" placeholder="Поиск покупателей..." style="margin: 20px 0;" @input="filterCustomers" />
-    <el-button type="primary" @click="showAddModal" style="margin-bottom: 20px;">Добавить покупателя</el-button>
+    <el-button type="primary" @click="openAdd" style="margin-bottom: 20px;">Добавить покупателя</el-button>
 
     <el-table :data="filteredCustomers" stripe>
       <el-table-column prop="username" label="Имя пользователя" />
@@ -164,7 +149,7 @@ onMounted(async () => {
       </el-table-column>
       <el-table-column label="Действия" width="220">
         <template #default="{ row }">
-          <el-button size="small" @click="onEditClick(row)" class="action-btn">Изменить</el-button>
+          <el-button size="small" @click="openEdit(row)" class="action-btn">Изменить</el-button>
           <el-button size="small" type="danger" @click="onRemove(row)" class="action-btn">Удалить</el-button>
         </template>
       </el-table-column>
@@ -173,48 +158,48 @@ onMounted(async () => {
     <el-dialog v-model="addVisible" title="Добавить покупателя">
       <el-form>
         <el-form-item label="Имя пользователя">
-          <el-input v-model="customerToAdd.username" />
+          <el-input v-model="toAdd.username" />
         </el-form-item>
         <el-form-item label="Email">
-          <el-input v-model="customerToAdd.email" type="email" />
+          <el-input v-model="toAdd.email" type="email" />
         </el-form-item>
         <el-form-item label="Пароль">
-          <el-input v-model="customerToAdd.password" type="password" />
+          <el-input v-model="toAdd.password" type="password" />
         </el-form-item>
         <el-form-item label="Возраст">
-          <el-input-number v-model="customerToAdd.age" :min="1" style="width: 100%;" />
+          <el-input-number v-model="toAdd.age" :min="1" style="width: 100%;" />
         </el-form-item>
         <el-form-item label="Администратор">
-          <el-checkbox v-model="customerToAdd.is_superuser" />
+          <el-checkbox v-model="toAdd.is_superuser" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="addVisible = false">Отмена</el-button>
-        <el-button type="primary" @click="onAddCustomer">Добавить</el-button>
+        <el-button type="primary" @click="saveAdd">Добавить</el-button>
       </template>
     </el-dialog>
 
     <el-dialog v-model="editVisible" title="Редактировать покупателя">
       <el-form>
         <el-form-item label="Имя пользователя">
-          <el-input v-model="customerToEdit.username" />
+          <el-input v-model="toEdit.username" />
         </el-form-item>
         <el-form-item label="Email">
-          <el-input v-model="customerToEdit.email" type="email" />
+          <el-input v-model="toEdit.email" type="email" />
         </el-form-item>
         <el-form-item label="Пароль (оставьте пустым, если не менять)">
-          <el-input v-model="customerToEdit.password" type="password" />
+          <el-input v-model="toEdit.password" type="password" />
         </el-form-item>
         <el-form-item label="Возраст">
-          <el-input-number v-model="customerToEdit.age" :min="1" style="width: 100%;" />
+          <el-input-number v-model="toEdit.age" :min="1" style="width: 100%;" />
         </el-form-item>
         <el-form-item label="Администратор">
-          <el-checkbox v-model="customerToEdit.is_superuser" />
+          <el-checkbox v-model="toEdit.is_superuser" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="editVisible = false">Отмена</el-button>
-        <el-button type="primary" @click="onUpdateCustomer">Сохранить</el-button>
+        <el-button type="primary" @click="saveForm">Сохранить</el-button>
       </template>
     </el-dialog>
   </div>
