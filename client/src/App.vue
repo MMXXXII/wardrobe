@@ -1,31 +1,7 @@
-<template>
-  <div id="app">
-    <nav v-if="showNav" class="main-nav">
-      <a v-for="link in leftLinks" :key="link.path" v-show="!link.admin || userStore.user?.is_superuser"
-        @click.prevent="router.push(link.path)" class="nav-link" :class="{ active: route.path === link.path }">
-        {{ link.label }}
-      </a>
-
-      <div class="spacer"></div>
-
-      <a @click.prevent="router.push('/profile')" class="nav-link profile-link"
-        :class="{ active: route.path === '/profile' }">
-        {{ userStore.user?.username || userStore.user?.email || 'Профиль' }}
-      </a>
-
-      <a v-if="userStore.user?.is_superuser" @click.prevent="openDjangoAdmin" class="nav-link admin-link">
-        Админка
-      </a>
-    </nav>
-    <router-view />
-  </div>
-</template>
-
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useUserStore } from './stores/userStore'
-import axios from 'axios'
 
 const route = useRoute()
 const router = useRouter()
@@ -44,16 +20,44 @@ const showNav = computed(() => route.path !== '/login' && userStore.isAuthentica
 const openDjangoAdmin = () => {
   window.open('http://localhost:8000/admin/', '_blank')
 }
-
-
-onMounted(async () => {
-  if (!userStore.user && userStore.token) {
-    try {
-      userStore.user = (await axios.get('/userprofile/info/')).data
-    } catch { }
-  }
-})
 </script>
+
+<template>
+  <div id="app">
+    <nav v-if="showNav" class="main-nav">
+      <a
+        v-for="link in leftLinks"
+        :key="link.path"
+        v-show="!link.admin || userStore.user?.is_superuser"
+        @click.prevent="router.push(link.path)"
+        class="nav-link"
+        :class="{ active: route.path === link.path }"
+      >
+        {{ link.label }}
+      </a>
+
+      <div class="spacer"></div>
+
+      <a
+        @click.prevent="router.push('/profile')"
+        class="nav-link profile-link"
+        :class="{ active: route.path === '/profile' }"
+      >
+        {{ userStore.user?.username || userStore.user?.email || 'Профиль' }}
+      </a>
+
+      <a
+        v-if="userStore.user?.is_superuser"
+        @click.prevent="openDjangoAdmin"
+        class="nav-link admin-link"
+      >
+        Админка
+      </a>
+    </nav>
+
+    <router-view />
+  </div>
+</template>
 
 <style>
 * {

@@ -2,7 +2,9 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
+import { useUserStore } from '../stores/userStore'
 
+const userStore = useUserStore()
 const products = ref([])
 const categories = ref([])
 const stores = ref([])
@@ -11,17 +13,16 @@ const toAdd = reactive({ name: '', category: '', store: '', size: 'M', price: 0,
 const toEdit = reactive({ id: null, name: '', category: '', store: '', size: 'M', price: 0, color: '', quantity: 0, image: null })
 const filterName = ref('')
 const filterCategory = ref('')
-const user = ref(null)
 const editVisible = ref(false)
 
-const isAdmin = computed(() => user.value?.is_superuser)
+const isAdmin = computed(() => userStore.isSuperUser)
 
-const filteredProducts = computed(() =>
-  products.value.filter(p =>
+const filteredProducts = computed(() => {
+  return products.value.filter(p =>
     p.name.toLowerCase().includes(filterName.value.toLowerCase()) &&
     (!filterCategory.value || p.category === Number(filterCategory.value))
   )
-)
+})
 
 function onFileChange(file) {
   toAdd.image = file.raw
@@ -31,87 +32,81 @@ function onFileChangeEdit(file) {
   toEdit.image = file.raw
 }
 
-async function fetchUser() {
-  try {
-    user.value = (await axios.get('/userprofile/info/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки пользователя')
-  }
+async function fetchUserInfo() {
+  await userStore.fetchUserInfo()
 }
 
 async function fetchAll() {
-  try {
-    products.value = (await axios.get('/products/')).data
-    categories.value = (await axios.get('/categories/')).data
-    stores.value = (await axios.get('/stores/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки данных')
-  }
+  products.value = (await axios.get('/products/')).data
+  categories.value = (await axios.get('/categories/')).data
+  stores.value = (await axios.get('/stores/')).data
 }
 
 async function fetchStats() {
-  try {
-    productStats.value = (await axios.get('/products/stats/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки статистики')
-  }
+  productStats.value = (await axios.get('/products/stats/')).data
 }
 
 async function onAdd() {
-  try {
-    const formData = new FormData()
-    formData.append('name', toAdd.name)
-    formData.append('category', toAdd.category)
-    formData.append('store', toAdd.store)
-    formData.append('size', toAdd.size)
-    formData.append('price', toAdd.price)
-    formData.append('quantity', toAdd.quantity)
-    if (toAdd.color) formData.append('color', toAdd.color)
-    if (toAdd.image) formData.append('image', toAdd.image)
+  const formData = new FormData()
+  formData.append('name', toAdd.name)
+  formData.append('category', toAdd.category)
+  formData.append('store', toAdd.store)
+  formData.append('size', toAdd.size)
+  formData.append('price', toAdd.price)
+  formData.append('quantity', toAdd.quantity)
+  if (toAdd.color) formData.append('color', toAdd.color)
+  if (toAdd.image) formData.append('image', toAdd.image)
 
-    await axios.post('/products/', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-    Object.assign(toAdd, { name: '', category: '', store: '', size: 'M', price: 0, color: '', quantity: 0, image: null })
-    await Promise.all([fetchAll(), fetchStats()])
-    ElMessage.success('Товар добавлен')
-  } catch {
-    ElMessage.error('Ошибка добавления')
-  }
+  await axios.post('/products/', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+
+  toAdd.name = ''
+  toAdd.category = ''
+  toAdd.store = ''
+  toAdd.size = 'M'
+  toAdd.price = 0
+  toAdd.color = ''
+  toAdd.quantity = 0
+  toAdd.image = null
+
+  await Promise.all([fetchAll(), fetchStats()])
+  ElMessage.success('Товар добавлен')
 }
 
 async function onRemove(p) {
-  try {
-    await axios.delete(`/products/${p.id}/`)
-    await Promise.all([fetchAll(), fetchStats()])
-    ElMessage.success('Товар удален')
-  } catch {
-    ElMessage.error('Ошибка удаления')
-  }
+  await axios.delete(`/products/${p.id}/`)
+  await Promise.all([fetchAll(), fetchStats()])
+  ElMessage.success('Товар удален')
 }
 
 function onEditClick(p) {
-  Object.assign(toEdit, { ...p, image: null })
+  toEdit.id = p.id
+  toEdit.name = p.name
+  toEdit.category = p.category
+  toEdit.store = p.store
+  toEdit.size = p.size
+  toEdit.price = p.price
+  toEdit.color = p.color
+  toEdit.quantity = p.quantity
+  toEdit.image = null
   editVisible.value = true
 }
 
 async function onUpdate() {
-  try {
-    const formData = new FormData()
-    formData.append('name', toEdit.name)
-    formData.append('category', toEdit.category)
-    formData.append('store', toEdit.store)
-    formData.append('size', toEdit.size)
-    formData.append('price', toEdit.price)
-    formData.append('quantity', toEdit.quantity)
-    if (toEdit.color) formData.append('color', toEdit.color)
-    if (toEdit.image) formData.append('image', toEdit.image)
+  const formData = new FormData()
+  formData.append('name', toEdit.name)
+  formData.append('category', toEdit.category)
+  formData.append('store', toEdit.store)
+  formData.append('size', toEdit.size)
+  formData.append('price', toEdit.price)
+  formData.append('quantity', toEdit.quantity)
+  if (toEdit.color) formData.append('color', toEdit.color)
+  if (toEdit.image) formData.append('image', toEdit.image)
 
-    await axios.put(`/products/${toEdit.id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
-    await Promise.all([fetchAll(), fetchStats()])
-    editVisible.value = false
-    ElMessage.success('Товар обновлен')
-  } catch {
-    ElMessage.error('Ошибка обновления')
-  }
+  await axios.put(`/products/${toEdit.id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+
+  await Promise.all([fetchAll(), fetchStats()])
+  editVisible.value = false
+  ElMessage.success('Товар обновлен')
 }
 
 async function exportData(format) {
@@ -120,20 +115,16 @@ async function exportData(format) {
     return
   }
 
-  try {
-    const response = await axios.get(`/products/export/?type=${format}`, { responseType: 'blob' })
-    const blob = response.data
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `Products.${format === 'excel' ? 'xlsx' : 'docx'}`
-    link.click()
-  } catch {
-    ElMessage.error('Ошибка экспорта')
-  }
+  const response = await axios.get(`/products/export/?type=${format}`, { responseType: 'blob' })
+  const blob = response.data
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `Products.${format === 'excel' ? 'xlsx' : 'docx'}`
+  link.click()
 }
 
 onMounted(async () => {
-  await fetchUser()
+  await fetchUserInfo()
   await Promise.all([fetchAll(), fetchStats()])
 })
 </script>

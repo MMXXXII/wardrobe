@@ -2,7 +2,9 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
+import { useUserStore } from '../stores/userStore'
 
+const userStore = useUserStore()
 const orders = ref([])
 const products = ref([])
 const stores = ref([])
@@ -10,16 +12,13 @@ const orderStats = ref(null)
 const toAdd = reactive({ store: '', product: '', quantity: 1, order_date: '' })
 const toEdit = reactive({ order_id: null, store: '', product: '', quantity: 1, order_date: '', status: 'pending' })
 const filterStatus = ref('')
-const user = ref(null)
 const editVisible = ref(false)
 
-const isAdmin = computed(() => user.value?.is_superuser)
+const isAdmin = computed(() => userStore.isSuperUser)
 
-const filteredOrders = computed(() =>
-  orders.value.filter(o =>
-    !filterStatus.value || o.status === filterStatus.value
-  )
-)
+const filteredOrders = computed(() => {
+  return orders.value.filter(o => !filterStatus.value || o.status === filterStatus.value)
+})
 
 const filteredProducts = computed(() => {
   return products.value.filter(p => p.store === toAdd.store)
@@ -30,106 +29,86 @@ const filteredProductsForEdit = computed(() => {
   return products.value.filter(p => p.store === toEdit.store)
 })
 
-async function fetchUser() {
-  try {
-    user.value = (await axios.get('/userprofile/info/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки пользователя')
-  }
+async function fetchUserInfo() {
+  userStore.fetchUserInfo()
 }
 
 async function fetchAll() {
-  try {
-    orders.value = (await axios.get('/orders/')).data
-    products.value = (await axios.get('/products/')).data
-    stores.value = (await axios.get('/stores/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки данных')
-  }
+  orders.value = (await axios.get('/orders/')).data
+  products.value = (await axios.get('/products/')).data
+  stores.value = (await axios.get('/stores/')).data
 }
 
 async function fetchStats() {
-  try {
-    orderStats.value = (await axios.get('/orders/stats/')).data
-  } catch {
-    ElMessage.error('Ошибка загрузки статистики')
-  }
+  orderStats.value = (await axios.get('/orders/stats/')).data
 }
 
 async function onAdd() {
-  try {
-    const product = products.value.find(p => p.id === toAdd.product);
-    if (!product) {
-      ElMessage.error('Товар не найден');
-      return;
-    }
-
-    if (product.quantity < toAdd.quantity) {
-      ElMessage.error(`Недостаточно товара. Доступно: ${product.quantity}`);
-      return;
-    }
-
-    const formattedDate = toAdd.order_date ? new Date(toAdd.order_date).toLocaleDateString('en-CA') : new Date().toLocaleDateString('en-CA');
-
-    await axios.post('/orders/', {
-      store: toAdd.store,
-      product: toAdd.product,
-      quantity: toAdd.quantity,
-      order_date: formattedDate
-    });
-    await Promise.all([fetchAll(), fetchStats()]);
-    ElMessage.success('Заказ добавлен');
-  } catch (error) {
-    console.error('Ошибка при добавлении:', error.response ? error.response.data : error.message);
-    ElMessage.error('Ошибка добавления');
+  const product = products.value.find(p => p.id === toAdd.product)
+  if (!product) {
+    ElMessage.error('Товар не найден')
+    return
   }
-}
 
-async function onRemove(o) {
-  try {
-    await axios.delete(`/orders/${o.order_id}/`)
-    await Promise.all([fetchAll(), fetchStats()])
-    ElMessage.success('Заказ удален')
-  } catch {
-    ElMessage.error('Ошибка удаления')
+  if (product.quantity < toAdd.quantity) {
+    ElMessage.error(`Недостаточно товара. Доступно: ${product.quantity}`)
+    return
   }
+
+  const formattedDate = toAdd.order_date ? new Date(toAdd.order_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+
+  await axios.post('/orders/', {
+    store: toAdd.store,
+    product: toAdd.product,
+    quantity: toAdd.quantity,
+    order_date: formattedDate
+  })
+
+  await Promise.all([fetchAll(), fetchStats()])
+  ElMessage.success('Заказ добавлен')
 }
 
 function onEditClick(o) {
-  Object.assign(toEdit, { ...o })
+  toEdit.order_id = o.order_id
+  toEdit.store = o.store
+  toEdit.product = o.product
+  toEdit.quantity = o.quantity
+  toEdit.order_date = o.order_date
+  toEdit.status = o.status
   editVisible.value = true
 }
 
 async function onUpdate() {
-  try {
-    const product = products.value.find(p => p.id === toEdit.product);
-    if (!product) {
-      ElMessage.error('Товар не найден');
-      return;
-    }
-
-    if (product.quantity < toEdit.quantity) {
-      ElMessage.error(`Недостаточно товара. Доступно: ${product.quantity}`);
-      return;
-    }
-
-    const formattedDate = toEdit.order_date ? 
-      new Date(toEdit.order_date).toISOString().split('T')[0] : 
-      new Date().toISOString().split('T')[0]
-    
-    await axios.put(`/orders/${toEdit.order_id}/`, {
-      store: toEdit.store,
-      product: toEdit.product,
-      quantity: toEdit.quantity,
-      order_date: formattedDate,
-      status: toEdit.status
-    })
-    await Promise.all([fetchAll(), fetchStats()])
-    editVisible.value = false
-    ElMessage.success('Заказ обновлен')
-  } catch {
-    ElMessage.error('Ошибка обновления');
+  const product = products.value.find(p => p.id === toEdit.product)
+  if (!product) {
+    ElMessage.error('Товар не найден')
+    return
   }
+
+  if (product.quantity < toEdit.quantity) {
+    ElMessage.error(`Недостаточно товара. Доступно: ${product.quantity}`)
+    return
+  }
+
+  const formattedDate = toEdit.order_date ? new Date(toEdit.order_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+
+  await axios.put(`/orders/${toEdit.order_id}/`, {
+    store: toEdit.store,
+    product: toEdit.product,
+    quantity: toEdit.quantity,
+    order_date: formattedDate,
+    status: toEdit.status
+  })
+
+  await Promise.all([fetchAll(), fetchStats()])
+  editVisible.value = false
+  ElMessage.success('Заказ обновлен')
+}
+
+async function onRemove(o) {
+  await axios.delete(`/orders/${o.order_id}/`)
+  await Promise.all([fetchAll(), fetchStats()])
+  ElMessage.success('Заказ удален')
 }
 
 async function exportData(format) {
@@ -138,23 +117,20 @@ async function exportData(format) {
     return
   }
 
-  try {
-    const response = await axios.get(`/orders/export/?type=${format}`, { responseType: 'blob' })
-    const blob = response.data
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `Orders.${format === 'excel' ? 'xlsx' : 'docx'}`
-    link.click()
-  } catch {
-    ElMessage.error('Ошибка экспорта')
-  }
+  const response = await axios.get(`/orders/export/?type=${format}`, { responseType: 'blob' })
+  const blob = response.data
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `Orders.${format === 'excel' ? 'xlsx' : 'docx'}`
+  link.click()
 }
 
 onMounted(async () => {
-  await fetchUser()
+  await fetchUserInfo()
   await Promise.all([fetchAll(), fetchStats()])
 })
 </script>
+
 
 <template>
   <div class="page">

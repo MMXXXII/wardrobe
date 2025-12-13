@@ -2,67 +2,48 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
+import { useUserStore } from '../stores/userStore'
 
+const userStore = useUserStore()
 const stores = ref([])
 const storeStats = ref(null)
 const toAdd = reactive({ name: '', address: '' })
 const toEdit = reactive({ id: null, name: '', address: '' })
 const filterName = ref('')
-const user = ref(null)
 const editVisible = ref(false)
 
-const isAdmin = computed(() => user.value?.is_superuser)
+const isAdmin = computed(() => userStore.isSuperUser)
 
-const filteredStores = computed(() =>
-  stores.value.filter(s =>
-    s.name.toLowerCase().includes(filterName.value.toLowerCase())
-  )
-)
+const filteredStores = computed(() => {
+  return stores.value.filter(s => s.name.toLowerCase().includes(filterName.value.toLowerCase()))
+})
 
-async function fetchUser() {
-  try {
-    user.value = (await axios.get('/userprofile/info/')).data
-  } catch (err) {
-    ElMessage.error('Ошибка загрузки пользователя')
-  }
+async function fetchUserInfo() {
+  await userStore.fetchUserInfo()
 }
 
 async function fetchAll() {
-  try {
-    stores.value = (await axios.get('/stores/')).data
-  } catch (err) {
-    ElMessage.error('Ошибка загрузки магазинов')
-  }
+  stores.value = (await axios.get('/stores/')).data
 }
 
 async function fetchStats() {
-  try {
-    storeStats.value = (await axios.get('/stores/stats/')).data
-  } catch (err) {
-    ElMessage.error('Ошибка загрузки статистики')
-  }
+  storeStats.value = (await axios.get('/stores/stats/')).data
 }
 
 async function onAdd() {
-  try {
-    await axios.post('/stores/', { ...toAdd })
-    toAdd.name = ''
-    toAdd.address = ''
-    await Promise.all([fetchAll(), fetchStats()])
-    ElMessage.success('Магазин добавлен')
-  } catch (err) {
-    ElMessage.error('Ошибка добавления')
-  }
+  await axios.post('/stores/', { name: toAdd.name, address: toAdd.address })
+
+  toAdd.name = ''
+  toAdd.address = ''
+
+  await Promise.all([fetchAll(), fetchStats()])
+  ElMessage.success('Магазин добавлен')
 }
 
 async function onRemove(s) {
-  try {
-    await axios.delete(`/stores/${s.id}/`)
-    await Promise.all([fetchAll(), fetchStats()])
-    ElMessage.success('Магазин удален')
-  } catch (err) {
-    ElMessage.error('Ошибка удаления')
-  }
+  await axios.delete(`/stores/${s.id}/`)
+  await Promise.all([fetchAll(), fetchStats()])
+  ElMessage.success('Магазин удален')
 }
 
 function onEditClick(s) {
@@ -73,40 +54,32 @@ function onEditClick(s) {
 }
 
 async function onUpdate() {
-  try {
-    await axios.put(`/stores/${toEdit.id}/`, { name: toEdit.name, address: toEdit.address })
-    await Promise.all([fetchAll(), fetchStats()])
-    editVisible.value = false
-    ElMessage.success('Магазин обновлен')
-  } catch (err) {
-    ElMessage.error('Ошибка обновления')
-  }
+  await axios.put(`/stores/${toEdit.id}/`, { name: toEdit.name, address: toEdit.address })
+  await Promise.all([fetchAll(), fetchStats()])
+  editVisible.value = false
+  ElMessage.success('Магазин обновлен')
 }
 
-// Export functionality
 async function exportData(format) {
   if (!isAdmin.value) {
     ElMessage.error('Только администратор может экспортировать данные')
     return
   }
 
-  try {
-    const response = await axios.get(`/stores/export/?type=${format}`, { responseType: 'blob' })
-    const blob = response.data
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `Stores.${format === 'excel' ? 'xlsx' : 'docx'}`
-    link.click()
-  } catch {
-    ElMessage.error('Ошибка экспорта')
-  }
+  const response = await axios.get(`/stores/export/?type=${format}`, { responseType: 'blob' })
+  const blob = response.data
+  const link = document.createElement('a')
+  link.href = URL.createObjectURL(blob)
+  link.download = `Stores.${format === 'excel' ? 'xlsx' : 'docx'}`
+  link.click()
 }
 
 onMounted(async () => {
-  await fetchUser()
+  await fetchUserInfo()
   await Promise.all([fetchAll(), fetchStats()])
 })
 </script>
+
 
 <template>
   <div class="page">

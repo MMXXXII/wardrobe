@@ -14,12 +14,12 @@ export default defineConfig({
         secure: false,
       },
       '/admin': {
-        target: 'http://localhost:8000',  // Прокси для админки
+        target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
       },
       '/static': {
-        target: 'http://localhost:8000',  // Прокси для статики
+        target: 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
       },

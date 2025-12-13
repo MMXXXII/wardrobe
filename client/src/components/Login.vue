@@ -20,7 +20,7 @@ async function handleLogin() {
   loading.value = true
 
   const response = await userStore.login(loginForm.username, loginForm.password)
-  
+
   if (response.otp_sent) {
     showOtpInput.value = true
     qrCodeImage.value = response.qr_code
@@ -41,7 +41,7 @@ async function handleOtpVerify() {
   loading.value = true
 
   const success = await userStore.verifyOtp(otpForm.code)
-  
+
   if (success) {
     ElMessage.success('Вход выполнен')
     router.push('/categories')

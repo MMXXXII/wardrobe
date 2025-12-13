@@ -3,21 +3,10 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
-import axios from 'axios'
 
 const router = useRouter()
 const userStore = useUserStore()
-const user = ref(null)
 const logoutVisible = ref(false)
-
-async function fetchUser() {
-  try {
-    const response = await axios.get('/userprofile/info/')
-    user.value = response.data
-  } catch (error) {
-    ElMessage.error('Ошибка загрузки профиля')
-  }
-}
 
 async function logout() {
   await userStore.logout()
@@ -26,8 +15,8 @@ async function logout() {
   router.push('/login')
 }
 
-onMounted(() => {
-  fetchUser()
+onMounted(async () => {
+  await userStore.fetchUserInfo()
 })
 </script>
 
@@ -39,10 +28,10 @@ onMounted(() => {
 
     <el-card>
       <el-descriptions title="Информация о пользователе" :column="1" border>
-        <el-descriptions-item label="Имя пользователя">{{ user?.username || 'Не указано' }}</el-descriptions-item>
-        <el-descriptions-item label="Email">{{ user?.email || 'Не указан' }}</el-descriptions-item>
+        <el-descriptions-item label="Имя пользователя">{{ userStore.user?.username || 'Не указано' }}</el-descriptions-item>
+        <el-descriptions-item label="Email">{{ userStore.user?.email || 'Не указан' }}</el-descriptions-item>
         <el-descriptions-item label="Роль">
-          <el-tag v-if="user?.is_superuser" type="danger">Администратор</el-tag>
+          <el-tag v-if="userStore.user?.is_superuser" type="danger">Администратор</el-tag>
           <el-tag v-else type="info">Пользователь</el-tag>
         </el-descriptions-item>
       </el-descriptions>
