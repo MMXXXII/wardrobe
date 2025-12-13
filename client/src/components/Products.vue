@@ -54,8 +54,12 @@ async function onAdd() {
   formData.append('size', toAdd.size)
   formData.append('price', toAdd.price)
   formData.append('quantity', toAdd.quantity)
-  if (toAdd.color) formData.append('color', toAdd.color)
-  if (toAdd.image) formData.append('image', toAdd.image)
+  if (toAdd.color) {
+    formData.append('color', toAdd.color)
+  }
+  if (toAdd.image) {
+    formData.append('image', toAdd.image)
+  }
 
   await axios.post('/products/', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 
@@ -99,8 +103,12 @@ async function onUpdate() {
   formData.append('size', toEdit.size)
   formData.append('price', toEdit.price)
   formData.append('quantity', toEdit.quantity)
-  if (toEdit.color) formData.append('color', toEdit.color)
-  if (toEdit.image) formData.append('image', toEdit.image)
+  if (toEdit.color) {
+    formData.append('color', toEdit.color)
+  }
+  if (toEdit.image) {
+    formData.append('image', toEdit.image)
+  }
 
   await axios.put(`/products/${toEdit.id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
 

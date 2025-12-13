@@ -40,7 +40,7 @@ class ProductSerializer(serializers.ModelSerializer):
 
 class CustomerSerializer(serializers.ModelSerializer):
     age = serializers.SerializerMethodField()
-    
+
     class Meta:
         model = User
         fields = [
@@ -48,14 +48,11 @@ class CustomerSerializer(serializers.ModelSerializer):
             'is_superuser', 'is_staff', 'age'
         ]
         read_only_fields = ['id', 'is_staff']
-    
+
     def get_age(self, obj):
-        try:
-            profile = UserProfile.objects.get(user=obj)
-            return profile.age
-        except UserProfile.DoesNotExist:
-            return None
-    
+        profile = UserProfile.objects.filter(user=obj).first()
+        return profile.age if profile else None
+
     def create(self, validated_data):
         user = User.objects.create_user(
             username=validated_data['username'],
@@ -64,30 +61,31 @@ class CustomerSerializer(serializers.ModelSerializer):
             is_superuser=validated_data.get('is_superuser', False),
             is_staff=validated_data.get('is_superuser', False)
         )
-        
-        age = self.context.get('request').data.get('age')
-        if age:
-            UserProfile.objects.create(user=user, age=age)
-        else:
-            UserProfile.objects.create(user=user)
-        
+
+        age = self.context['request'].data.get('age')
+        UserProfile.objects.create(user=user, age=age if age else None)
+
         return user
-    
+
     def update(self, instance, validated_data):
         instance.username = validated_data.get('username', instance.username)
         instance.email = validated_data.get('email', instance.email)
-        if 'password' in validated_data and validated_data['password']:
-            instance.set_password(validated_data['password'])
-        instance.is_superuser = validated_data.get('is_superuser', instance.is_superuser)
-        instance.is_staff = validated_data.get('is_superuser', instance.is_superuser)
+
+        password = validated_data.get('password')
+        if password:
+            instance.set_password(password)
+
+        is_su = validated_data.get('is_superuser', instance.is_superuser)
+        instance.is_superuser = is_su
+        instance.is_staff = is_su
         instance.save()
-        
-        age = self.context.get('request').data.get('age')
+
+        age = self.context['request'].data.get('age')
         if age is not None:
             profile, _ = UserProfile.objects.get_or_create(user=instance)
             profile.age = age
             profile.save()
-        
+
         return instance
 
 

@@ -142,11 +142,13 @@ class ProductViewSet(viewsets.ModelViewSet, BaseExportMixin):
         queryset = self.get_queryset()
         avg_price = queryset.aggregate(avg_price=Avg('price'))['avg_price'] or 0
         most_ordered = Order.objects.values('product__id', 'product__name').annotate(order_count=Count('product')).order_by('-order_count').first()
-        most_ordered_product = {
-            'id': most_ordered['product__id'],
-            'name': most_ordered['product__name'],
-            'order_count': most_ordered['order_count']
-        } if most_ordered else None
+        most_ordered_product = None
+        if most_ordered:
+            most_ordered_product = {
+                'id': most_ordered['product__id'],
+                'name': most_ordered['product__name'],
+                'order_count': most_ordered['order_count']
+            }
 
         return Response({
             'count': queryset.count(),
@@ -160,14 +162,28 @@ class ProductViewSet(viewsets.ModelViewSet, BaseExportMixin):
             return Response({"error": "Only administrators can export products"}, status=status.HTTP_403_FORBIDDEN)
         
         queryset = self.get_queryset()
-        data = [
-            {
-                'ID': p.id, 'Name': p.name, 'Category': p.category.name if p.category else '',
-                'Store': p.store.name if p.store else '', 'Size': p.size, 'Price': p.price,
-                'Color': p.color or '', 'Available': 'Yes' if p.is_available() else 'No'
-            }
-            for p in queryset
-        ]
+        data = []
+        for p in queryset:
+            category_name = ''
+            if p.category:
+                category_name = p.category.name
+            store_name = ''
+            if p.store:
+                store_name = p.store.name
+            color_value = p.color or ''
+            available_value = 'Yes' if p.is_available() else 'No'
+            
+            data.append({
+                'ID': p.id,
+                'Name': p.name,
+                'Category': category_name,
+                'Store': store_name,
+                'Size': p.size,
+                'Price': p.price,
+                'Color': color_value,
+                'Available': available_value
+            })
+        
         return self.export_queryset(data, ['ID', 'Name', 'Category', 'Store', 'Size', 'Price', 'Color', 'Available'], 'Products')
 
 
@@ -184,105 +200,121 @@ class CustomerViewSet(viewsets.ModelViewSet):
         return context
     
     def create(self, request, *args, **kwargs):
-        try:
-            username = request.data.get('username')
-            email = request.data.get('email')
-            password = request.data.get('password')
-            age = request.data.get('age')
-            is_superuser = request.data.get('is_superuser', False)
+        username = request.data.get('username')
+        email = request.data.get('email')
+        password = request.data.get('password')
+        age = request.data.get('age')
+        is_superuser = request.data.get('is_superuser', False)
+        
+        if not username or not password:
+            return Response({'error': 'username и password обязательны'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if User.objects.filter(username=username).exists():
+            return Response({'error': 'Username уже существует'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        user = User.objects.create_user(
+            username=username,
+            email=email or '',
+            password=password,
+            is_superuser=bool(is_superuser),
+            is_staff=bool(is_superuser)
+        )
+        
+        if age:
+            age_int = None
+            if isinstance(age, int):
+                age_int = age
+            elif isinstance(age, str):
+                if age.isdigit():
+                    age_int = int(age)
             
-            if not username or not password:
-                return Response({'error': 'username и password обязательны'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            if User.objects.filter(username=username).exists():
-                return Response({'error': 'Username уже существует'}, status=status.HTTP_400_BAD_REQUEST)
-            
-            user = User.objects.create_user(
-                username=username, email=email or '', password=password,
-                is_superuser=bool(is_superuser), is_staff=bool(is_superuser)
-            )
-            
-            if age:
-                try:
-                    UserProfile.objects.get_or_create(user=user, defaults={'age': int(age)})
-                except (ValueError, TypeError):
-                    pass
+            if age_int is not None:
+                profile = UserProfile.objects.filter(user=user).first()
+                if profile:
+                    profile.age = age_int
+                    profile.save()
+                else:
+                    UserProfile.objects.create(user=user, age=age_int)
             else:
-                UserProfile.objects.get_or_create(user=user)
-            
-            store = Store.objects.first()
-            if not store:
-                store = Store.objects.create(name='Default Store', address='N/A', user=request.user)
-            
-            Customer.objects.create(user=user, store=store, first_name=username, last_name='')
-            
-            return Response(self.get_serializer(user).data, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                profile = UserProfile.objects.filter(user=user).first()
+                if not profile:
+                    UserProfile.objects.create(user=user)
+        else:
+            profile = UserProfile.objects.filter(user=user).first()
+            if not profile:
+                UserProfile.objects.create(user=user)
+        
+        store = Store.objects.first()
+        if not store:
+            store = Store.objects.create(name='Default Store', address='N/A', user=request.user)
+        
+        Customer.objects.create(user=user, store=store, first_name=username, last_name='')
+        
+        return Response(self.get_serializer(user).data, status=status.HTTP_201_CREATED)
     
     def update(self, request, *args, **kwargs):
-        try:
-            user = self.get_object()
+        user = self.get_object()
+        
+        if 'username' in request.data:
+            user.username = request.data['username']
+        if 'email' in request.data:
+            user.email = request.data['email']
+        if 'password' in request.data and request.data['password']:
+            user.set_password(request.data['password'])
+        if 'is_superuser' in request.data:
+            is_su = request.data['is_superuser']
+            if isinstance(is_su, str):
+                user.is_superuser = bool(is_su)
+            else:
+                user.is_superuser = is_su
+            user.is_staff = user.is_superuser
+        
+        user.save()
+        
+        if 'age' in request.data and request.data['age']:
+            age = request.data['age']
+            age_int = None
+            if isinstance(age, int):
+                age_int = age
+            elif isinstance(age, str):
+                if age.isdigit():
+                    age_int = int(age)
             
-            if 'username' in request.data:
-                user.username = request.data['username']
-            if 'email' in request.data:
-                user.email = request.data['email']
-            if 'password' in request.data and request.data['password']:
-                user.set_password(request.data['password'])
-            if 'is_superuser' in request.data:
-                is_su = request.data['is_superuser']
-                user.is_superuser = bool(is_su) if isinstance(is_su, str) else is_su
-                user.is_staff = user.is_superuser
-            
-            user.save()
-            
-            if 'age' in request.data and request.data['age']:
-                try:
-                    profile, _ = UserProfile.objects.get_or_create(user=user)
-                    profile.age = int(request.data['age'])
+            if age_int is not None:
+                profile = UserProfile.objects.filter(user=user).first()
+                if profile:
+                    profile.age = age_int
                     profile.save()
-                except (ValueError, TypeError):
-                    pass
-            
-            return Response(self.get_serializer(user).data)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                else:
+                    UserProfile.objects.create(user=user, age=age_int)
+        
+        return Response(self.get_serializer(user).data)
     
     def destroy(self, request, *args, **kwargs):
-        try:
-            user = self.get_object()
-            user.delete()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        user = self.get_object()
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
     
     @action(detail=False, methods=['get'])
     def stats(self, request):
-        try:
-            queryset = self.get_queryset()
-            return Response({
-                'count': queryset.count(),
-                'count_admins': queryset.filter(is_superuser=True).count(),
-                'count_users': queryset.filter(is_superuser=False).count(),
-            })
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        queryset = self.get_queryset()
+        return Response({
+            'count': queryset.count(),
+            'count_admins': queryset.filter(is_superuser=True).count(),
+            'count_users': queryset.filter(is_superuser=False).count(),
+        })
     
     @action(detail=False, methods=['get'])
     def export(self, request):
-        try:
-            export_type = request.query_params.get('type', 'excel')
-            queryset = self.get_queryset()
-            
-            if export_type == 'excel':
-                return self._export_excel(queryset)
-            elif export_type == 'word':
-                return self._export_word(queryset)
-            else:
-                return Response({'error': 'Invalid export type'}, status=status.HTTP_400_BAD_REQUEST)
-        except Exception as e:
-            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        export_type = request.query_params.get('type', 'excel')
+        queryset = self.get_queryset()
+        
+        if export_type == 'excel':
+            return self._export_excel(queryset)
+        elif export_type == 'word':
+            return self._export_word(queryset)
+        else:
+            return Response({'error': 'Invalid export type'}, status=status.HTTP_400_BAD_REQUEST)
     
     def _export_excel(self, queryset):
         wb = openpyxl.Workbook()
@@ -300,16 +332,14 @@ class CustomerViewSet(viewsets.ModelViewSet):
         
         for user in queryset:
             age = None
-            try:
-                profile = UserProfile.objects.get(user=user)
+            profile = UserProfile.objects.filter(user=user).first()
+            if profile:
                 age = profile.age
-            except UserProfile.DoesNotExist:
-                pass
             
-            ws.append([
-                user.id, user.username, user.email, age or '',
-                "Администратор" if user.is_superuser else "Покупатель"
-            ])
+            user_type = "Администратор" if user.is_superuser else "Покупатель"
+            age_value = age or ''
+            
+            ws.append([user.id, user.username, user.email, age_value, user_type])
         
         ws.column_dimensions['A'].width = 8
         ws.column_dimensions['B'].width = 20
@@ -338,11 +368,9 @@ class CustomerViewSet(viewsets.ModelViewSet):
         
         for user in queryset:
             age = None
-            try:
-                profile = UserProfile.objects.get(user=user)
+            profile = UserProfile.objects.filter(user=user).first()
+            if profile:
                 age = profile.age
-            except UserProfile.DoesNotExist:
-                pass
             
             row_cells = table.add_row().cells
             row_cells[0].text = str(user.id)
@@ -392,12 +420,18 @@ class OrderViewSet(viewsets.ModelViewSet, BaseExportMixin):
         total_sum = qs.aggregate(total=Sum('total_price'))['total'] or 0
         top_customer = qs.values('customer__id', 'customer__first_name').annotate(order_count=Count('order_id')).order_by('-order_count').first()
 
+        top_customer_name = None
+        top_customer_count = 0
+        if top_customer:
+            top_customer_name = top_customer['customer__first_name']
+            top_customer_count = top_customer['order_count']
+
         return Response({
             'count': qs.count(),
             'total_sum': round(total_sum, 2),
             'topCustomer': {
-                'name': top_customer['customer__first_name'] if top_customer else None,
-                'order_count': top_customer['order_count'] if top_customer else 0
+                'name': top_customer_name,
+                'order_count': top_customer_count
             }
         })
 
@@ -407,14 +441,34 @@ class OrderViewSet(viewsets.ModelViewSet, BaseExportMixin):
             return Response({"error": "Permission denied"}, status=403)
 
         queryset = self.get_queryset()
-        data = [
-            {
-                'ID': o.order_id, 'Product': o.product.name if o.product else '',
-                'Customer': f"{o.customer.first_name} {o.customer.last_name or ''}" if o.customer else '',
-                'Quantity': o.quantity, 'Total Price': o.total_price, 'Status': o.get_status_display(),
-                'Order Date': o.order_date, 'Delivery Date': o.delivery_date if o.delivery_date else 'Not delivered',
-                'User': o.user.username if o.user else ''
-            }
-            for o in queryset
-        ]
+        data = []
+        for o in queryset:
+            product_name = ''
+            if o.product:
+                product_name = o.product.name
+            
+            customer_name = ''
+            if o.customer:
+                customer_name = f"{o.customer.first_name} {o.customer.last_name or ''}"
+            
+            delivery_date_value = 'Not delivered'
+            if o.delivery_date:
+                delivery_date_value = o.delivery_date
+            
+            user_name = ''
+            if o.user:
+                user_name = o.user.username
+            
+            data.append({
+                'ID': o.order_id,
+                'Product': product_name,
+                'Customer': customer_name,
+                'Quantity': o.quantity,
+                'Total Price': o.total_price,
+                'Status': o.get_status_display(),
+                'Order Date': o.order_date,
+                'Delivery Date': delivery_date_value,
+                'User': user_name
+            })
+        
         return self.export_queryset(data, ['ID', 'Product', 'Customer', 'Quantity', 'Total Price', 'Status', 'Order Date', 'Delivery Date', 'User'], 'Orders')
