@@ -1,474 +1,472 @@
-from rest_framework import viewsets, status
+import pyotp
+from django.contrib.auth import authenticate, login, logout as django_logout
+from django.http import HttpResponse
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import ensure_csrf_cookie
+from django.db.models import Count, Avg, Sum
+import io
+from openpyxl import Workbook
+from docx import Document
+from rest_framework import permissions, serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
+from rest_framework.viewsets import ModelViewSet, GenericViewSet
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Count, Avg, Sum
-from django.http import HttpResponse
-from django.contrib.auth import authenticate, login
-from django.core.cache import cache
-import io
-import time
-import random
-import string
-from openpyxl import Workbook
-import openpyxl
-from docx import Document
-from wardrobe.models import Customer
-from django.contrib.auth.models import User
-from openpyxl.styles import Font, PatternFill
-from .models import Category, Store, Product, Order, UserProfile
-from .serializers import (
+from wardrobe.models import Category, Store, Product, Order, Customer, UserProfile, User
+from wardrobe.serializers import (
     CategorySerializer, StoreSerializer, ProductSerializer,
     CustomerSerializer, OrderSerializer
 )
+from wardrobe.permissions import IsSuperuserOrReadOnly
+
+
+class LoginSerializer(serializers.Serializer):
+    username = serializers.CharField()
+    password = serializers.CharField()
+
+
+class SecondLoginSerializer(serializers.Serializer):
+    key = serializers.CharField()
+
+
+class UserProfileViewSet(GenericViewSet):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = LoginSerializer
+
+    @method_decorator(ensure_csrf_cookie)
+    @action(detail=False, url_path="csrf", methods=["GET"])
+    def csrf(self, request, *args, **kwargs):
+        return Response({"ok": True})
+
+    def get_serializer_class(self):
+        if self.action == "login_second_factor":
+            return SecondLoginSerializer
+        return LoginSerializer
+
+    @action(detail=False, url_path="info", methods=["GET"])
+    def info(self, request, *args, **kwargs):
+        data = {
+            "username": request.user.username if request.user.is_authenticated else "",
+            "is_authenticated": request.user.is_authenticated,
+            "is_superuser": request.user.is_superuser if request.user.is_authenticated else False,
+            "second_factor": request.session.get("second_factor") or False
+        }
+        return Response(data)
+
+    @action(detail=False, url_path="login", methods=["POST"])
+    def login_first_factor(self, request, *args, **kwargs):
+        serializer = LoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = authenticate(
+            username=serializer.validated_data["username"],
+            password=serializer.validated_data["password"]
+        )
+        if user is None:
+            return Response({"success": False, "error": "Неверные учетные данные"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        login(request, user)
+        request.session["second_factor"] = False
+        request.session.modified = True
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        
+        if not profile.totp_key:
+            profile.totp_key = pyotp.random_base32()
+            profile.save()
+        
+        return Response({
+            "success": True,
+            "is_authenticated": True,
+            "first_factor": True,
+            "second_factor": False,
+            "username": user.username,
+            "email": user.email,
+            "is_superuser": user.is_superuser
+        })
+
+    @action(detail=False, url_path="otp-login", methods=["POST"], serializer_class=SecondLoginSerializer)
+    def login_second_factor(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        code = serializer.validated_data["key"].strip()
+        profile = UserProfile.objects.filter(user=request.user).first()
+        
+        if not profile or not profile.totp_key:
+            return Response({"success": False, "error": "Профиль не найден"})
+        
+        totp = pyotp.TOTP(profile.totp_key)
+        if totp.verify(code, valid_window=1):
+            request.session["second_factor"] = True
+            request.session.set_expiry(600)
+            return Response({
+                "success": True,
+                "is_authenticated": True,
+                "second_factor": True,
+                "is_superuser": request.user.is_superuser
+            })
+        
+        return Response({"success": False, "error": "Неверный OTP код"})
+
+    @action(detail=False, url_path="totp-url", methods=["GET"], permission_classes=[IsAuthenticated])
+    def totp_url(self, request):
+        profile, _ = UserProfile.objects.get_or_create(user=request.user)
+        if not profile.totp_key:
+            profile.totp_key = pyotp.random_base32()
+            profile.save()
+        
+        totp = pyotp.TOTP(profile.totp_key)
+        otp_uri = totp.provisioning_uri(name=request.user.username, issuer_name="MyWardrobeApp")
+        return Response({"url": otp_uri})
+
+    @action(detail=False, url_path="logout", methods=["POST"], permission_classes=[IsAuthenticated])
+    def logout(self, request, *args, **kwargs):
+        django_logout(request)
+        request.session["second_factor"] = False
+        request.session.modified = True
+        return Response({"success": True})
+
+
+class OTPRequiredForDelete(permissions.BasePermission):
+    def has_object_permission(self, request, view, obj):
+        if request.method in permissions.SAFE_METHODS:
+            return True
+        return request.session.get("second_factor", False)
 
 
 class BaseExportMixin:
     def export_queryset(self, queryset, columns, filename_base):
         file_type = self.request.query_params.get('type', 'excel')
-
+        
         if file_type == 'excel':
-            wb = Workbook()
-            ws = wb.active
-            ws.title = filename_base
-            ws.append(columns)
-            for row in queryset:
-                ws.append([row.get(col, '') for col in columns])
-            stream = io.BytesIO()
-            wb.save(stream)
-            stream.seek(0)
-            response = HttpResponse(stream, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-            response['Content-Disposition'] = f'attachment; filename="{filename_base}.xlsx"'
-            return response
-
+            workbook = Workbook()
+            sheet = workbook.active
+            sheet.title = filename_base
+            sheet.append(columns)
+            
+            for data_row in queryset:
+                row_data = [data_row.get(col, '') for col in columns]
+                sheet.append(row_data)
+            
+            excel_file = io.BytesIO()
+            workbook.save(excel_file)
+            excel_file.seek(0)
+            file_response = HttpResponse(
+                excel_file,
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            file_response['Content-Disposition'] = f'attachment; filename="{filename_base}.xlsx"'
+            return file_response
+        
         elif file_type == 'word':
-            doc = Document()
-            doc.add_heading(filename_base, 0)
-            for row in queryset:
-                doc.add_paragraph(' | '.join(str(row.get(col, '')) for col in columns))
-            stream = io.BytesIO()
-            doc.save(stream)
-            stream.seek(0)
-            response = HttpResponse(stream, content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-            response['Content-Disposition'] = f'attachment; filename="{filename_base}.docx"'
-            return response
-
+            document = Document()
+            document.add_heading(filename_base, 0)
+            
+            for data_row in queryset:
+                row_values = [str(data_row.get(col, '')) for col in columns]
+                text_line = ' | '.join(row_values)
+                document.add_paragraph(text_line)
+            
+            word_file = io.BytesIO()
+            document.save(word_file)
+            word_file.seek(0)
+            file_response = HttpResponse(
+                word_file,
+                content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+            )
+            file_response['Content-Disposition'] = f'attachment; filename="{filename_base}.docx"'
+            return file_response
+        
         return Response({"error": "Unknown file type"}, status=400)
 
 
-class CategoryViewSet(viewsets.ModelViewSet, BaseExportMixin):
+class CategoryViewSet(ModelViewSet, BaseExportMixin):
+    queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, OTPRequiredForDelete, IsSuperuserOrReadOnly]
 
-    def get_queryset(self):
-        return Category.objects.all().order_by('name')
-
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
-
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['GET'])
     def stats(self, request):
         queryset = self.get_queryset()
-        top_category = Category.objects.annotate(num_products=Count('product')).order_by('-num_products').first()
-        return Response({
-            'count': queryset.count(),
-            'top': top_category.name if top_category else None
-        })
+        total = queryset.count()
+        top_category = Category.objects.annotate(product_count=Count('product')).order_by('-product_count').first()
+        top_name = top_category.name if top_category else None
+        return Response({'count': total, 'top': top_name})
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['GET'])
     def export(self, request):
+        if not request.user.is_superuser:
+            return Response({"error": "Только администраторы могут экспортировать данные"}, status=403)
+        
         queryset = self.get_queryset()
-        if request.user.is_superuser:
-            data = [{'ID': c.id, 'Name': c.name, 'User': c.user.username if c.user else ''} for c in queryset]
-            columns = ['ID', 'Name', 'User']
-        else:
-            data = [{'ID': c.id, 'Name': c.name} for c in queryset]
-            columns = ['ID', 'Name']
-        return self.export_queryset(data, columns, 'Categories')
+        data_list = [{'ID': c.id, 'Name': c.name, 'User': c.user.username if c.user else ''} for c in queryset]
+        columns = ['ID', 'Name', 'User']
+        return self.export_queryset(data_list, columns, 'Categories')
 
 
-class StoreViewSet(viewsets.ModelViewSet, BaseExportMixin):
+class StoreViewSet(ModelViewSet, BaseExportMixin):
+    queryset = Store.objects.all().order_by('name')
     serializer_class = StoreSerializer
-    permission_classes = [IsAuthenticated]
-
-    def get_queryset(self):
-        return Store.objects.all().order_by('name')
+    permission_classes = [IsAuthenticated, OTPRequiredForDelete, IsSuperuserOrReadOnly]
 
     def perform_create(self, serializer):
         if not self.request.user.is_superuser:
-            raise PermissionError("Only admins can add stores.")
+            raise PermissionError("Только админы могут добавлять магазины")
         serializer.save(user=self.request.user)
 
     def perform_update(self, serializer):
         if not self.request.user.is_superuser:
-            raise PermissionError("Only admins can edit stores.")
-        serializer.save(user=self.request.user)
+            raise PermissionError("Только админы могут редактировать магазины")
+        serializer.save()
 
     def perform_destroy(self, instance):
         if not self.request.user.is_superuser:
-            raise PermissionError("Only admins can delete stores.")
+            raise PermissionError("Только админы могут удалять магазины")
         instance.delete()
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['GET'])
     def stats(self, request):
         queryset = self.get_queryset()
-        top_store = Store.objects.annotate(num_orders=Count('product__order')).order_by('-num_orders').first()
-        return Response({
-            'count': queryset.count(),
-            'top': top_store.name if top_store else None
-        })
+        total = queryset.count()
+        top_store = Store.objects.annotate(order_count=Count('product__order')).order_by('-order_count').first()
+        top_name = top_store.name if top_store else None
+        return Response({'count': total, 'top': top_name})
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['GET'])
     def export(self, request):
+        if not request.user.is_superuser:
+            return Response({"error": "Только администраторы могут экспортировать данные"}, status=403)
+        
         queryset = self.get_queryset()
-        if request.user.is_superuser:
-            data = [{'ID': s.id, 'Name': s.name, 'Address': s.address, 'User': s.user.username if s.user else ''} for s in queryset]
-            columns = ['ID', 'Name', 'Address', 'User']
-        else:
-            data = [{'ID': s.id, 'Name': s.name, 'Address': s.address} for s in queryset]
-            columns = ['ID', 'Name', 'Address']
-        return self.export_queryset(data, columns, 'Stores')
+        data_list = [{'ID': s.id, 'Name': s.name, 'Address': s.address, 'User': s.user.username if s.user else ''} for s in queryset]
+        columns = ['ID', 'Name', 'Address', 'User']
+        return self.export_queryset(data_list, columns, 'Stores')
 
 
-class ProductViewSet(viewsets.ModelViewSet, BaseExportMixin):
+class ProductViewSet(ModelViewSet, BaseExportMixin):
+    queryset = Product.objects.all()
     serializer_class = ProductSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, OTPRequiredForDelete, IsSuperuserOrReadOnly]
 
-    def get_queryset(self):
-        return Product.objects.all()
-
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['GET'])
     def stats(self, request):
         queryset = self.get_queryset()
+        total = queryset.count()
         avg_price = queryset.aggregate(avg_price=Avg('price'))['avg_price'] or 0
         most_ordered = Order.objects.values('product__id', 'product__name').annotate(order_count=Count('product')).order_by('-order_count').first()
-        most_ordered_product = None
+        
         if most_ordered:
             most_ordered_product = {
                 'id': most_ordered['product__id'],
                 'name': most_ordered['product__name'],
                 'order_count': most_ordered['order_count']
             }
-
+        else:
+            most_ordered_product = None
+        
         return Response({
-            'count': queryset.count(),
+            'count': total,
             'avg_price': round(avg_price, 2),
             'most_ordered': most_ordered_product
         })
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['GET'])
     def export(self, request):
         if not request.user.is_superuser:
-            return Response({"error": "Only administrators can export products"}, status=status.HTTP_403_FORBIDDEN)
+            return Response({"error": "Только администраторы могут экспортировать товары"}, status=403)
         
         queryset = self.get_queryset()
-        data = []
-        for p in queryset:
-            category_name = ''
-            if p.category:
-                category_name = p.category.name
-            store_name = ''
-            if p.store:
-                store_name = p.store.name
-            color_value = p.color or ''
-            available_value = 'Yes' if p.is_available() else 'No'
-            
-            data.append({
-                'ID': p.id,
-                'Name': p.name,
-                'Category': category_name,
-                'Store': store_name,
-                'Size': p.size,
-                'Price': p.price,
-                'Color': color_value,
-                'Available': available_value
-            })
+        data_list = [{
+            'ID': p.id,
+            'Name': p.name,
+            'Category': p.category.name if p.category else '',
+            'Store': p.store.name if p.store else '',
+            'Size': p.size,
+            'Price': p.price,
+            'Color': p.color or '',
+            'Available': 'Yes' if p.is_available() else 'No'
+        } for p in queryset]
         
-        return self.export_queryset(data, ['ID', 'Name', 'Category', 'Store', 'Size', 'Price', 'Color', 'Available'], 'Products')
+        columns = ['ID', 'Name', 'Category', 'Store', 'Size', 'Price', 'Color', 'Available']
+        return self.export_queryset(data_list, columns, 'Products')
 
 
-class CustomerViewSet(viewsets.ModelViewSet):
-    serializer_class = CustomerSerializer
-    permission_classes = [IsAuthenticated]
-    
-    def get_queryset(self):
-        return User.objects.all()
-    
-    def get_serializer_context(self):
-        context = super().get_serializer_context()
-        context['request'] = self.request
-        return context
-    
-    def create(self, request, *args, **kwargs):
-        username = request.data.get('username')
-        email = request.data.get('email')
-        password = request.data.get('password')
-        age = request.data.get('age')
-        is_superuser = request.data.get('is_superuser', False)
-        
-        if not username or not password:
-            return Response({'error': 'username и password обязательны'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        if User.objects.filter(username=username).exists():
-            return Response({'error': 'Username уже существует'}, status=status.HTTP_400_BAD_REQUEST)
-        
-        user = User.objects.create_user(
-            username=username,
-            email=email or '',
-            password=password,
-            is_superuser=bool(is_superuser),
-            is_staff=bool(is_superuser)
-        )
-        
-        if age:
-            age_int = None
-            if isinstance(age, int):
-                age_int = age
-            elif isinstance(age, str):
-                if age.isdigit():
-                    age_int = int(age)
-            
-            if age_int is not None:
-                profile = UserProfile.objects.filter(user=user).first()
-                if profile:
-                    profile.age = age_int
-                    profile.save()
-                else:
-                    UserProfile.objects.create(user=user, age=age_int)
-            else:
-                profile = UserProfile.objects.filter(user=user).first()
-                if not profile:
-                    UserProfile.objects.create(user=user)
-        else:
-            profile = UserProfile.objects.filter(user=user).first()
-            if not profile:
-                UserProfile.objects.create(user=user)
-        
-        store = Store.objects.first()
-        if not store:
-            store = Store.objects.create(name='Default Store', address='N/A', user=request.user)
-        
-        Customer.objects.create(user=user, store=store, first_name=username, last_name='')
-        
-        return Response(self.get_serializer(user).data, status=status.HTTP_201_CREATED)
-    
-    def update(self, request, *args, **kwargs):
-        user = self.get_object()
-        
-        if 'username' in request.data:
-            user.username = request.data['username']
-        if 'email' in request.data:
-            user.email = request.data['email']
-        if 'password' in request.data and request.data['password']:
-            user.set_password(request.data['password'])
-        if 'is_superuser' in request.data:
-            is_su = request.data['is_superuser']
-            if isinstance(is_su, str):
-                user.is_superuser = bool(is_su)
-            else:
-                user.is_superuser = is_su
-            user.is_staff = user.is_superuser
-        
-        user.save()
-        
-        if 'age' in request.data and request.data['age']:
-            age = request.data['age']
-            age_int = None
-            if isinstance(age, int):
-                age_int = age
-            elif isinstance(age, str):
-                if age.isdigit():
-                    age_int = int(age)
-            
-            if age_int is not None:
-                profile = UserProfile.objects.filter(user=user).first()
-                if profile:
-                    profile.age = age_int
-                    profile.save()
-                else:
-                    UserProfile.objects.create(user=user, age=age_int)
-        
-        return Response(self.get_serializer(user).data)
-    
-    def destroy(self, request, *args, **kwargs):
-        user = self.get_object()
-        user.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    
-    @action(detail=False, methods=['get'])
-    def stats(self, request):
-        queryset = self.get_queryset()
-        return Response({
-            'count': queryset.count(),
-            'count_admins': queryset.filter(is_superuser=True).count(),
-            'count_users': queryset.filter(is_superuser=False).count(),
-        })
-    
-    @action(detail=False, methods=['get'])
-    def export(self, request):
-        export_type = request.query_params.get('type', 'excel')
-        queryset = self.get_queryset()
-        
-        if export_type == 'excel':
-            return self._export_excel(queryset)
-        elif export_type == 'word':
-            return self._export_word(queryset)
-        else:
-            return Response({'error': 'Invalid export type'}, status=status.HTTP_400_BAD_REQUEST)
-    
-    def _export_excel(self, queryset):
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Покупатели"
-        
-        headers = ["ID", "Username", "Email", "Возраст", "Тип"]
-        ws.append(headers)
-        
-        header_fill = PatternFill(start_color="FFD966", end_color="FFD966", fill_type="solid")
-        header_font = Font(bold=True)
-        for cell in ws[1]:
-            cell.fill = header_fill
-            cell.font = header_font
-        
-        for user in queryset:
-            age = None
-            profile = UserProfile.objects.filter(user=user).first()
-            if profile:
-                age = profile.age
-            
-            user_type = "Администратор" if user.is_superuser else "Покупатель"
-            age_value = age or ''
-            
-            ws.append([user.id, user.username, user.email, age_value, user_type])
-        
-        ws.column_dimensions['A'].width = 8
-        ws.column_dimensions['B'].width = 20
-        ws.column_dimensions['C'].width = 25
-        ws.column_dimensions['D'].width = 12
-        ws.column_dimensions['E'].width = 15
-        
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-        response['Content-Disposition'] = 'attachment; filename="Customers.xlsx"'
-        wb.save(response)
-        return response
-    
-    def _export_word(self, queryset):
-        doc = Document()
-        doc.add_heading('Список покупателей', 0)
-        
-        table = doc.add_table(rows=1, cols=5)
-        table.style = 'Light Grid Accent 1'
-        
-        hdr_cells = table.rows[0].cells
-        hdr_cells[0].text = "ID"
-        hdr_cells[1].text = "Username"
-        hdr_cells[2].text = "Email"
-        hdr_cells[3].text = "Возраст"
-        hdr_cells[4].text = "Тип"
-        
-        for user in queryset:
-            age = None
-            profile = UserProfile.objects.filter(user=user).first()
-            if profile:
-                age = profile.age
-            
-            row_cells = table.add_row().cells
-            row_cells[0].text = str(user.id)
-            row_cells[1].text = user.username
-            row_cells[2].text = user.email
-            row_cells[3].text = str(age) if age else ''
-            row_cells[4].text = "Администратор" if user.is_superuser else "Покупатель"
-        
-        response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.wordprocessingml.document')
-        response['Content-Disposition'] = 'attachment; filename="Customers.docx"'
-        doc.save(response)
-        return response
-
-
-class OrderViewSet(viewsets.ModelViewSet, BaseExportMixin):
+class OrderViewSet(ModelViewSet, BaseExportMixin):
+    queryset = Order.objects.select_related('product', 'customer', 'user')
     serializer_class = OrderSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, OTPRequiredForDelete]
 
     def get_queryset(self):
-        qs = Order.objects.select_related('product', 'customer')
-        if self.request.user.is_superuser:
-            return qs
-        return qs.filter(user=self.request.user)
+        queryset = super().get_queryset()
+        if not self.request.user.is_superuser:
+            return queryset.filter(user=self.request.user)
+        return queryset
 
-    def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+    def get_permissions(self):
+        if self.action == 'complete_order':
+            return [IsAuthenticated()]
+        return super().get_permissions()
 
-    @action(detail=True, methods=['post'], url_path='complete')
+    @action(detail=True, methods=['POST'], url_path='complete')
     def complete_order(self, request, pk=None):
-        if not request.user.is_superuser:
-            return Response({'detail': 'Только администратор может менять статус заказа.'}, status=status.HTTP_403_FORBIDDEN)
-
         order = self.get_object()
+        
+        if not request.user.is_superuser:
+            return Response({'detail': 'Только администратор может менять статус заказа'}, status=403)
+        
         if order.status == 'sold':
-            return Response({'detail': 'Заказ уже завершен.'}, status=status.HTTP_400_BAD_REQUEST)
-
+            return Response({'detail': 'Заказ уже завершен'}, status=400)
+        
         from datetime import date
         order.status = 'sold'
         order.delivery_date = date.today()
         order.save()
+        serializer = self.get_serializer(order)
+        return Response({'detail': 'Заказ успешно завершен', 'order': serializer.data})
 
-        return Response({'detail': 'Заказ успешно завершен.', 'order': self.get_serializer(order).data})
-
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['GET'])
     def stats(self, request):
-        qs = self.get_queryset()
-        total_sum = qs.aggregate(total=Sum('total_price'))['total'] or 0
-        top_customer = qs.values('customer__id', 'customer__first_name').annotate(order_count=Count('order_id')).order_by('-order_count').first()
-
-        top_customer_name = None
-        top_customer_count = 0
+        queryset = self.get_queryset()
+        total = queryset.count()
+        total_sum = queryset.aggregate(total=Sum('total_price'))['total'] or 0
+        top_customer = queryset.values('customer__id', 'customer__first_name').annotate(order_count=Count('order_id')).order_by('-order_count').first()
+        
         if top_customer:
-            top_customer_name = top_customer['customer__first_name']
-            top_customer_count = top_customer['order_count']
-
-        return Response({
-            'count': qs.count(),
-            'total_sum': round(total_sum, 2),
-            'topCustomer': {
-                'name': top_customer_name,
-                'order_count': top_customer_count
+            top_customer_data = {
+                'name': top_customer['customer__first_name'],
+                'order_count': top_customer['order_count']
             }
+        else:
+            top_customer_data = {'name': None, 'order_count': 0}
+        
+        return Response({
+            'count': total,
+            'total_sum': round(total_sum, 2),
+            'topCustomer': top_customer_data
         })
 
-    @action(detail=False, methods=['get'])
+    @action(detail=False, methods=['GET'])
     def export(self, request):
         if not request.user.is_superuser:
-            return Response({"error": "Permission denied"}, status=403)
-
+            return Response({"error": "Только администраторы могут экспортировать данные"}, status=403)
+        
         queryset = self.get_queryset()
-        data = []
-        for o in queryset:
-            product_name = ''
-            if o.product:
-                product_name = o.product.name
+        data_list = [{
+            'ID': o.order_id,
+            'Product': o.product.name if o.product else '',
+            'Customer': f"{o.customer.first_name} {o.customer.last_name or ''}" if o.customer else '',
+            'Quantity': o.quantity,
+            'Total Price': o.total_price,
+            'Status': o.get_status_display(),
+            'Order Date': o.order_date,
+            'Delivery Date': o.delivery_date or 'Not delivered',
+            'User': o.user.username if o.user else ''
+        } for o in queryset]
+        
+        columns = ['ID', 'Product', 'Customer', 'Quantity', 'Total Price', 'Status', 'Order Date', 'Delivery Date', 'User']
+        return self.export_queryset(data_list, columns, 'Orders')
+
+
+class CustomerViewSet(ModelViewSet, BaseExportMixin):
+    queryset = User.objects.all()
+    serializer_class = CustomerSerializer
+    permission_classes = [IsAuthenticated, OTPRequiredForDelete, IsSuperuserOrReadOnly]
+
+    def get_queryset(self):
+        if self.request.user.is_superuser:
+            return User.objects.all()
+        return User.objects.filter(id=self.request.user.id)
+
+    @action(detail=False, methods=['GET'])
+    def stats(self, request):
+        queryset = self.get_queryset()
+        total_users = queryset.count()
+        total_admins = queryset.filter(is_superuser=True).count()
+        return Response({
+            'count': total_users,
+            'count_admins': total_admins,
+            'count_users': total_users - total_admins
+        })
+
+    def create(self, request, *args, **kwargs):
+        data = request.data
+        username = data.get('username')
+        email = data.get('email')
+        password = data.get('password')
+        age = data.get('age', None)
+        is_superuser = data.get('is_superuser', False)
+        is_staff = data.get('is_staff', False)
+        
+        if not username or not email or not password:
+            return Response({"error": "Заполните все обязательные поля"}, status=400)
+        
+        if User.objects.filter(username=username).exists():
+            return Response({"error": "Пользователь с таким именем уже существует"}, status=400)
+        
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            is_superuser=is_superuser,
+            is_staff=is_staff
+        )
+        
+        UserProfile.objects.get_or_create(user=user, defaults={'age': age})
+        
+        store = Store.objects.first()
+        if not store:
+            store = Store.objects.create(name='Default Store', address='N/A', user=request.user)
+        Customer.objects.get_or_create(user=user, defaults={'first_name': username, 'last_name': '', 'store': store})
+        
+        serializer = self.get_serializer(user)
+        return Response(serializer.data, status=201)
+
+    def update(self, request, *args, **kwargs):
+        user = self.get_object()
+        data = request.data
+        password = data.get('password', None)
+        
+        if password:
+            user.set_password(password)
+        
+        user.username = data.get('username', user.username)
+        user.email = data.get('email', user.email)
+        user.is_superuser = data.get('is_superuser', user.is_superuser)
+        user.is_staff = data.get('is_staff', user.is_staff)
+        user.save()
+        
+        age = data.get('age', None)
+        profile, _ = UserProfile.objects.get_or_create(user=user)
+        
+        if age is not None:
+            profile.age = age
+            profile.save()
+        
+        customer, _ = Customer.objects.get_or_create(user=user, defaults={'first_name': user.username, 'last_name': ''})
+        customer.first_name = user.username
+        customer.save()
+        
+        serializer = self.get_serializer(user)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['GET'])
+    def export(self, request):
+        if not request.user.is_superuser:
+            return Response({"error": "Только администраторы могут экспортировать данные"}, status=403)
+        
+        queryset = self.get_queryset()
+        data_list = []
+        
+        for u in queryset:
+            age = ''
+            if hasattr(u, 'userprofile'):
+                age = u.userprofile.age if u.userprofile.age else ''
             
-            customer_name = ''
-            if o.customer:
-                customer_name = f"{o.customer.first_name} {o.customer.last_name or ''}"
-            
-            delivery_date_value = 'Not delivered'
-            if o.delivery_date:
-                delivery_date_value = o.delivery_date
-            
-            user_name = ''
-            if o.user:
-                user_name = o.user.username
-            
-            data.append({
-                'ID': o.order_id,
-                'Product': product_name,
-                'Customer': customer_name,
-                'Quantity': o.quantity,
-                'Total Price': o.total_price,
-                'Status': o.get_status_display(),
-                'Order Date': o.order_date,
-                'Delivery Date': delivery_date_value,
-                'User': user_name
+            data_list.append({
+                'ID': u.id,
+                'Username': u.username,
+                'Email': u.email,
+                'Age': age,
+                'Role': 'Администратор' if u.is_superuser else 'Покупатель'
             })
         
-        return self.export_queryset(data, ['ID', 'Product', 'Customer', 'Quantity', 'Total Price', 'Status', 'Order Date', 'Delivery Date', 'User'], 'Orders')
+        columns = ['ID', 'Username', 'Email', 'Age', 'Role']
+        return self.export_queryset(data_list, columns, 'Customers')

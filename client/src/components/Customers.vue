@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 import { useUserStore } from '../stores/userStore'
@@ -9,8 +9,17 @@ const customers = ref([])
 const filteredCustomers = ref([])
 const customerStats = ref(null)
 const searchQuery = ref('')
-const toAdd = reactive({ username: '', email: '', password: '', age: null, is_superuser: false })
-const toEdit = reactive({ id: null, username: '', email: '', password: '', age: null, is_superuser: false })
+const toAddUsername = ref('')
+const toAddEmail = ref('')
+const toAddPassword = ref('')
+const toAddAge = ref(null)
+const toAddIsSuperuser = ref(false)
+const toEditId = ref(null)
+const toEditUsername = ref('')
+const toEditEmail = ref('')
+const toEditPassword = ref('')
+const toEditAge = ref(null)
+const toEditIsSuperuser = ref(false)
 const addVisible = ref(false)
 const editVisible = ref(false)
 
@@ -34,21 +43,21 @@ async function loadData() {
 }
 
 function openAdd() {
-  toAdd.username = ''
-  toAdd.email = ''
-  toAdd.password = ''
-  toAdd.age = null
-  toAdd.is_superuser = false
+  toAddUsername.value = ''
+  toAddEmail.value = ''
+  toAddPassword.value = ''
+  toAddAge.value = null
+  toAddIsSuperuser.value = false
   addVisible.value = true
 }
 
 async function saveAdd() {
   await axios.post('/customers/', {
-    username: toAdd.username,
-    email: toAdd.email,
-    password: toAdd.password,
-    age: toAdd.age,
-    is_superuser: toAdd.is_superuser
+    username: toAddUsername.value,
+    email: toAddEmail.value,
+    password: toAddPassword.value,
+    age: toAddAge.value,
+    is_superuser: toAddIsSuperuser.value
   })
   await loadData()
   addVisible.value = false
@@ -56,26 +65,26 @@ async function saveAdd() {
 }
 
 function openEdit(c) {
-  toEdit.id = c.id
-  toEdit.username = c.username
-  toEdit.email = c.email
-  toEdit.password = ''
-  toEdit.age = c.age
-  toEdit.is_superuser = c.is_superuser
+  toEditId.value = c.id
+  toEditUsername.value = c.username
+  toEditEmail.value = c.email
+  toEditPassword.value = ''
+  toEditAge.value = c.age
+  toEditIsSuperuser.value = c.is_superuser
   editVisible.value = true
 }
 
 async function saveForm() {
   const payload = {
-    username: toEdit.username,
-    email: toEdit.email,
-    age: toEdit.age,
-    is_superuser: toEdit.is_superuser
+    username: toEditUsername.value,
+    email: toEditEmail.value,
+    age: toEditAge.value,
+    is_superuser: toEditIsSuperuser.value
   }
-  if (toEdit.password) {
-    payload.password = toEdit.password
+  if (toEditPassword.value) {
+    payload.password = toEditPassword.value
   }
-  await axios.put(`/customers/${toEdit.id}/`, payload)
+  await axios.put(`/customers/${toEditId.value}/`, payload)
   await loadData()
   editVisible.value = false
   ElMessage.success('Покупатель обновлен')
@@ -158,19 +167,19 @@ onMounted(async () => {
     <el-dialog v-model="addVisible" title="Добавить покупателя">
       <el-form>
         <el-form-item label="Имя пользователя">
-          <el-input v-model="toAdd.username" />
+          <el-input v-model="toAddUsername" />
         </el-form-item>
         <el-form-item label="Email">
-          <el-input v-model="toAdd.email" type="email" />
+          <el-input v-model="toAddEmail" type="email" />
         </el-form-item>
         <el-form-item label="Пароль">
-          <el-input v-model="toAdd.password" type="password" />
+          <el-input v-model="toAddPassword" type="password" />
         </el-form-item>
         <el-form-item label="Возраст">
-          <el-input-number v-model="toAdd.age" :min="1" style="width: 100%;" />
+          <el-input-number v-model="toAddAge" :min="1" style="width: 100%;" />
         </el-form-item>
         <el-form-item label="Администратор">
-          <el-checkbox v-model="toAdd.is_superuser" />
+          <el-checkbox v-model="toAddIsSuperuser" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -182,19 +191,19 @@ onMounted(async () => {
     <el-dialog v-model="editVisible" title="Редактировать покупателя">
       <el-form>
         <el-form-item label="Имя пользователя">
-          <el-input v-model="toEdit.username" />
+          <el-input v-model="toEditUsername" />
         </el-form-item>
         <el-form-item label="Email">
-          <el-input v-model="toEdit.email" type="email" />
+          <el-input v-model="toEditEmail" type="email" />
         </el-form-item>
         <el-form-item label="Пароль (оставьте пустым, если не менять)">
-          <el-input v-model="toEdit.password" type="password" />
+          <el-input v-model="toEditPassword" type="password" />
         </el-form-item>
         <el-form-item label="Возраст">
-          <el-input-number v-model="toEdit.age" :min="1" style="width: 100%;" />
+          <el-input-number v-model="toEditAge" :min="1" style="width: 100%;" />
         </el-form-item>
         <el-form-item label="Администратор">
-          <el-checkbox v-model="toEdit.is_superuser" />
+          <el-checkbox v-model="toEditIsSuperuser" />
         </el-form-item>
       </el-form>
       <template #footer>

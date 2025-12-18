@@ -1,240 +1,274 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
+import QRCode from 'qrcode'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '../stores/userStore'
 
 const userStore = useUserStore()
+
 const orders = ref([])
 const products = ref([])
 const stores = ref([])
-const orderStats = ref(null)
-const toAdd = reactive({ store: '', product: '', quantity: 1, order_date: '' })
-const toEdit = reactive({ order_id: null, store: '', product: '', quantity: 1, order_date: '', status: 'pending' })
+const stats = ref(null)
+
 const filterStatus = ref('')
+
+const addForm = reactive({
+  store: null,
+  product: null,
+  quantity: 1,
+  date: ''
+})
+
+const editForm = reactive({
+  id: null,
+  store: null,
+  product: null,
+  quantity: 1,
+  date: '',
+  status: 'pending'
+})
+
 const editVisible = ref(false)
+
+const showOtpDialog = ref(false)
+const qrDataUrl = ref('')
+const totpCode = ref('')
+const totpError = ref(false)
+const pendingOrder = ref(null)
 
 const isAdmin = computed(() => userStore.isSuperUser)
 
-const filteredOrders = computed(() => {
-  return orders.value.filter(o => !filterStatus.value || o.status === filterStatus.value)
+const filteredOrders = computed(() =>
+  orders.value.filter(o => !filterStatus.value || o.status === filterStatus.value)
+)
+
+const productsForAdd = computed(() =>
+  products.value.filter(p => Number(p.store) === Number(addForm.store))
+)
+
+const productsForEdit = computed(() =>
+  editForm.store
+    ? products.value.filter(p => Number(p.store) === Number(editForm.store))
+    : []
+)
+
+watch(() => addForm.store, () => {
+  addForm.product = null
 })
 
-const filteredProducts = computed(() => {
-  return products.value.filter(p => p.store === toAdd.store)
-})
-
-const filteredProductsForEdit = computed(() => {
-  if (!toEdit.store) return []
-  return products.value.filter(p => p.store === toEdit.store)
-})
-
-async function fetchUserInfo() {
-  userStore.fetchUserInfo()
-}
-
-async function fetchAll() {
+async function loadAll() {
   orders.value = (await axios.get('/orders/')).data
   products.value = (await axios.get('/products/')).data
   stores.value = (await axios.get('/stores/')).data
+  stats.value = (await axios.get('/orders/stats/')).data
 }
 
-async function fetchStats() {
-  orderStats.value = (await axios.get('/orders/stats/')).data
+async function buildQr(url) {
+  qrDataUrl.value = url
+    ? await QRCode.toDataURL(url, { width: 220, margin: 1 })
+    : ''
 }
 
-async function onAdd() {
-  const product = products.value.find(p => p.id === toAdd.product)
-  if (!product) {
-    ElMessage.error('Товар не найден')
+async function addOrder() {
+  const product = products.value.find(p => Number(p.id) === Number(addForm.product))
+  if (!product) return ElMessage.error('Товар не найден')
+  if (product.quantity < addForm.quantity) {
+    return ElMessage.error(`Доступно: ${product.quantity}`)
+  }
+
+  pendingOrder.value = {
+    store: addForm.store,
+    product: addForm.product,
+    quantity: addForm.quantity,
+    order_date: addForm.date
+      ? new Date(addForm.date).toISOString().split('T')[0]
+      : new Date().toISOString().split('T')[0]
+  }
+
+  totpCode.value = ''
+  totpError.value = false
+  showOtpDialog.value = true
+
+  const url = await userStore.getTotp()
+  await buildQr(url)
+}
+
+async function confirmOtp() {
+  const ok = await userStore.verifyOtp(totpCode.value)
+  if (!ok) {
+    totpError.value = true
+    totpCode.value = ''
     return
   }
 
-  if (product.quantity < toAdd.quantity) {
-    ElMessage.error(`Недостаточно товара. Доступно: ${product.quantity}`)
-    return
-  }
+  userStore.isOtpVerified = true
+  await axios.post('/orders/', pendingOrder.value)
 
-  const formattedDate = toAdd.order_date ? new Date(toAdd.order_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
+  showOtpDialog.value = false
+  pendingOrder.value = null
 
-  await axios.post('/orders/', {
-    store: toAdd.store,
-    product: toAdd.product,
-    quantity: toAdd.quantity,
-    order_date: formattedDate
-  })
+  addForm.store = null
+  addForm.product = null
+  addForm.quantity = 1
+  addForm.date = ''
 
-  await Promise.all([fetchAll(), fetchStats()])
+  await loadAll()
   ElMessage.success('Заказ добавлен')
 }
 
-function onEditClick(o) {
-  toEdit.order_id = o.order_id
-  toEdit.store = o.store
-  toEdit.product = o.product
-  toEdit.quantity = o.quantity
-  toEdit.order_date = o.order_date
-  toEdit.status = o.status
+function openEdit(o) {
+  editForm.id = o.order_id
+  editForm.store = o.store
+  editForm.product = o.product
+  editForm.quantity = o.quantity
+  editForm.date = o.order_date
+  editForm.status = o.status
   editVisible.value = true
 }
 
-async function onUpdate() {
-  const product = products.value.find(p => p.id === toEdit.product)
-  if (!product) {
-    ElMessage.error('Товар не найден')
-    return
+async function updateOrder() {
+  const product = products.value.find(p => Number(p.id) === Number(editForm.product))
+  if (!product) return ElMessage.error('Товар не найден')
+  if (product.quantity < editForm.quantity) {
+    return ElMessage.error(`Доступно: ${product.quantity}`)
   }
 
-  if (product.quantity < toEdit.quantity) {
-    ElMessage.error(`Недостаточно товара. Доступно: ${product.quantity}`)
-    return
-  }
-
-  const formattedDate = toEdit.order_date ? new Date(toEdit.order_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
-
-  await axios.put(`/orders/${toEdit.order_id}/`, {
-    store: toEdit.store,
-    product: toEdit.product,
-    quantity: toEdit.quantity,
-    order_date: formattedDate,
-    status: toEdit.status
+  await axios.put(`/orders/${editForm.id}/`, {
+    store: editForm.store,
+    product: editForm.product,
+    quantity: editForm.quantity,
+    order_date: editForm.date,
+    status: editForm.status
   })
 
-  await Promise.all([fetchAll(), fetchStats()])
   editVisible.value = false
-  ElMessage.success('Заказ обновлен')
+  await loadAll()
+  ElMessage.success('Обновлено')
 }
 
-async function onRemove(o) {
+async function removeOrder(o) {
   await axios.delete(`/orders/${o.order_id}/`)
-  await Promise.all([fetchAll(), fetchStats()])
-  ElMessage.success('Заказ удален')
-}
-
-async function exportData(format) {
-  if (!isAdmin.value) {
-    ElMessage.error('Только администратор может экспортировать данные')
-    return
-  }
-
-  const response = await axios.get(`/orders/export/?type=${format}`, { responseType: 'blob' })
-  const blob = response.data
-  const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
-  link.download = `Orders.${format === 'excel' ? 'xlsx' : 'docx'}`
-  link.click()
+  await loadAll()
+  ElMessage.success('Удалено')
 }
 
 onMounted(async () => {
-  await fetchUserInfo()
-  await Promise.all([fetchAll(), fetchStats()])
+  await userStore.fetchUserInfo()
+  await loadAll()
 })
 </script>
 
-
 <template>
   <div class="page">
-    <el-header>
-      <h1>Заказы</h1>
-    </el-header>
-
-    <el-card v-if="orderStats">
-      <el-row :gutter="20">
-        <el-col :span="8">
-          <el-statistic title="Всего заказов" :value="orderStats.count || 0" />
-        </el-col>
-        <el-col :span="8">
-          <el-statistic title="Общая сумма" :value="orderStats.total_sum || 0" suffix="₽" />
-        </el-col>
-      </el-row>
-    </el-card>
-
-    <el-card v-if="isAdmin">
-      <h3>Экспорт</h3>
-      <el-button type="primary" @click="exportData('excel')">Экспорт в Excel</el-button>
-      <el-button type="primary" @click="exportData('word')" style="margin-left: 10px;">Экспорт в Word</el-button>
+    <el-card>
+      <h2>Заказы</h2>
+      <div class="stats">
+        <div>Всего: {{ stats?.count || 0 }}</div>
+        <div>Сумма: {{ stats?.total_sum || 0 }} ₽</div>
+      </div>
     </el-card>
 
     <el-card>
       <h3>Добавить заказ</h3>
-      <el-form @submit.prevent="onAdd">
-        <el-select v-model="toAdd.store" placeholder="Магазин" style="width: 100%; margin-bottom: 10px;">
+      <el-form @submit.prevent="addOrder">
+        <el-select v-model="addForm.store" placeholder="Магазин" style="width:100%">
           <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
         </el-select>
-        <el-select v-model="toAdd.product" placeholder="Товар" style="width: 100%; margin-bottom: 10px;">
-          <el-option v-for="p in filteredProducts" :key="p.id" :label="`${p.name} (${p.price} ₽)`" :value="p.id" />
+
+        <el-select
+          v-model="addForm.product"
+          placeholder="Товар"
+          style="width:100%;margin-top:10px"
+          :disabled="!addForm.store"
+        >
+          <el-option
+            v-for="p in productsForAdd"
+            :key="p.id"
+            :label="`${p.name} (${p.price} ₽)`"
+            :value="p.id"
+          />
         </el-select>
-        <el-input-number v-model="toAdd.quantity" :min="1" placeholder="Количество" style="margin-bottom: 10px;" />
-        <el-date-picker v-model="toAdd.order_date" type="date" placeholder="Дата" style="width: 100%; margin-bottom: 10px;" />
-        <el-button type="primary" native-type="submit">Добавить заказ</el-button>
+
+        <el-input-number v-model="addForm.quantity" :min="1" style="margin-top:10px" />
+        <el-date-picker v-model="addForm.date" type="date" style="width:100%;margin-top:10px" />
+
+        <el-button type="primary" native-type="submit" style="margin-top:15px">
+          Добавить
+        </el-button>
       </el-form>
     </el-card>
 
-    <el-select v-model="filterStatus" placeholder="Все статусы" style="margin: 20px 0; width: 200px;">
-      <el-option label="Все статусы" value="" />
+    <el-select v-model="filterStatus" placeholder="Статус" style="width:200px;margin:20px 0">
+      <el-option label="Все" value="" />
       <el-option label="Ожидает" value="pending" />
       <el-option label="Продано" value="sold" />
-      <el-option label="Возвращено" value="returned" />
+      <el-option label="Возврат" value="returned" />
       <el-option label="Отменено" value="cancelled" />
     </el-select>
 
-    <el-table :data="filteredOrders" stripe>
+    <el-table :data="filteredOrders">
       <el-table-column prop="product_name" label="Товар" />
       <el-table-column prop="store_name" label="Магазин" />
-      <el-table-column prop="customer_name" label="Покупатель" />
-      <el-table-column prop="quantity" label="Количество" />
+      <el-table-column prop="quantity" label="Кол-во" />
       <el-table-column prop="total_price" label="Сумма" />
       <el-table-column prop="order_date" label="Дата" />
-      <el-table-column prop="status" label="Статус">
+      <el-table-column prop="status" label="Статус" />
+      <el-table-column v-if="isAdmin" label="Действия">
         <template #default="{ row }">
-          <el-tag v-if="row.status === 'pending'">Ожидает</el-tag>
-          <el-tag v-if="row.status === 'sold'" type="success">Продано</el-tag>
-          <el-tag v-if="row.status === 'returned'" type="info">Возвращено</el-tag>
-          <el-tag v-if="row.status === 'cancelled'" type="danger">Отменено</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="Действия" width="120" v-if="isAdmin">
-        <template #default="{ row }">
-          <div class="actions-column">
-            <el-button size="small" @click="onEditClick(row)" class="action-btn">Изменить</el-button>
-          </div>
-          <div class="actions-column">
-            <el-button size="small" type="danger" @click="onRemove(row)" class="action-btn">Удалить</el-button>
-          </div>
+          <el-button size="small" @click="openEdit(row)">Изменить</el-button>
+          <el-button size="small" type="danger" @click="removeOrder(row)">Удалить</el-button>
         </template>
       </el-table-column>
     </el-table>
 
     <el-dialog v-model="editVisible" title="Редактировать">
       <el-form>
-        <el-form-item label="Магазин">
-          <el-select v-model="toEdit.store" style="width: 100%;">
-            <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Товар">
-          <el-select v-model="toEdit.product" style="width: 100%;">
-            <el-option v-for="p in filteredProductsForEdit" :key="p.id" :label="`${p.name} (${p.price} ₽)`" :value="p.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Количество">
-          <el-input-number v-model="toEdit.quantity" :min="1" style="width: 100%;" />
-        </el-form-item>
-        <el-form-item label="Дата">
-          <el-date-picker v-model="toEdit.order_date" type="date" style="width: 100%;" />
-        </el-form-item>
-        <el-form-item label="Статус">
-          <el-select v-model="toEdit.status" style="width: 100%;">
-            <el-option label="Ожидает" value="pending" />
-            <el-option label="Продано" value="sold" />
-            <el-option label="Возвращено" value="returned" />
-            <el-option label="Отменено" value="cancelled" />
-          </el-select>
-        </el-form-item>
+        <el-select v-model="editForm.store" style="width:100%">
+          <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
+        </el-select>
+
+        <el-select v-model="editForm.product" style="width:100%;margin-top:10px">
+          <el-option
+            v-for="p in productsForEdit"
+            :key="p.id"
+            :label="`${p.name} (${p.price} ₽)`"
+            :value="p.id"
+          />
+        </el-select>
+
+        <el-input-number v-model="editForm.quantity" :min="1" style="margin-top:10px" />
+        <el-date-picker v-model="editForm.date" type="date" style="width:100%;margin-top:10px" />
+
+        <el-select v-model="editForm.status" style="width:100%;margin-top:10px">
+          <el-option label="Ожидает" value="pending" />
+          <el-option label="Продано" value="sold" />
+          <el-option label="Возврат" value="returned" />
+          <el-option label="Отменено" value="cancelled" />
+        </el-select>
       </el-form>
+
       <template #footer>
         <el-button @click="editVisible = false">Отмена</el-button>
-        <el-button type="primary" @click="onUpdate">Сохранить</el-button>
+        <el-button type="primary" @click="updateOrder">Сохранить</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="showOtpDialog" title="2FA подтверждение" width="500px">
+      <div style="text-align:center">
+        <img v-if="qrDataUrl" :src="qrDataUrl" style="width:220px;height:220px" />
+      </div>
+
+      <el-input v-model="totpCode" maxlength="6" placeholder="Код из приложения" />
+
+      <div v-if="totpError" style="color:red;font-size:13px;margin-top:6px">
+        Неверный код
+      </div>
+
+      <template #footer>
+        <el-button @click="showOtpDialog = false">Отмена</el-button>
+        <el-button type="primary" @click="confirmOtp">Подтвердить</el-button>
       </template>
     </el-dialog>
   </div>
@@ -242,29 +276,13 @@ onMounted(async () => {
 
 <style scoped>
 .page {
-  padding: 20px;
   max-width: 1200px;
   margin: 0 auto;
+  padding: 20px;
 }
-
-h1 {
-  margin-bottom: 20px;
-}
-
-.el-card {
-  margin-bottom: 20px;
-}
-
-.actions-column {
+.stats {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
-  margin-bottom: 5px;
-}
-
-.action-btn {
-  width: auto;
-  width: 100px;
+  gap: 20px;
+  margin-top: 10px;
 }
 </style>

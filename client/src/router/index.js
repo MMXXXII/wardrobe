@@ -86,18 +86,13 @@ router.beforeEach(async (to, from, next) => {
       next('/login')
       return
     }
-    
-    if (to.meta.requiresOtp && !userStore.isOtpVerified) {
-      next('/login')
-      return
-    }
-    
     next()
-  } else if (to.path === '/login' && userStore.isAuthenticated && userStore.isOtpVerified) {
+  } else if (to.path === '/login' && userStore.isAuthenticated) {
     next('/categories')
   } else {
     next()
   }
 })
+
 
 export default router

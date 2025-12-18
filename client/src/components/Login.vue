@@ -1,148 +1,145 @@
 <script setup>
-import { ref, reactive } from 'vue'
-import { useRouter } from 'vue-router'
+import { onMounted, ref } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useUserStore } from '../stores/userStore'
-import { ElMessage } from 'element-plus'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
 
-const loginForm = reactive({ username: '', password: '' })
-const otpForm = reactive({ code: '' })
-const error = ref('')
-const loading = ref(false)
-const showOtpInput = ref(false)
-const qrCodeImage = ref('')
-const totpKey = ref('')
+const username = ref('')
+const password = ref('')
+
+onMounted(async () => {
+  await userStore.fetchUserInfo()
+  if (userStore.isAuthenticated) {
+    router.replace('/products')
+  }
+})
 
 async function handleLogin() {
-  error.value = ''
-  loading.value = true
-
-  const response = await userStore.login(loginForm.username, loginForm.password)
-
-  if (response.otp_sent) {
-    showOtpInput.value = true
-    qrCodeImage.value = response.qr_code
-    totpKey.value = response.totp_key
-    ElMessage.info('Отсканируйте QR-код в Google Authenticator')
-  }
-
-  loading.value = false
+  await userStore.login(username.value, password.value)
+  router.replace('/products')
 }
 
-async function handleOtpVerify() {
-  if (!otpForm.code || otpForm.code.length !== 6) {
-    error.value = 'Введите корректный 6-значный код'
-    return
-  }
-
-  error.value = ''
-  loading.value = true
-
-  const success = await userStore.verifyOtp(otpForm.code)
-
-  if (success) {
-    ElMessage.success('Вход выполнен')
-    router.push('/categories')
-  } else {
-    error.value = 'Неверный OTP код'
-  }
-
-  loading.value = false
-}
-
-function resetLogin() {
-  showOtpInput.value = false
-  otpForm.code = ''
-  error.value = ''
-  loginForm.password = ''
-  qrCodeImage.value = ''
-  totpKey.value = ''
+async function handleLogout() {
+  await userStore.logout()
+  router.replace('/login')
 }
 </script>
 
 <template>
-  <div class="login-page">
-    <el-card class="login-card">
+  <el-container class="full-screen" v-if="route.path === '/profile'">
+    <el-card class="profile-card" shadow="hover">
       <template #header>
-        <div class="card-header">
-          <h2>{{ showOtpInput ? 'Подтверждение' : 'Авторизация' }}</h2>
-        </div>
+        <span>Профиль пользователя</span>
       </template>
 
-      <el-form v-if="!showOtpInput" @submit.prevent="handleLogin" :model="loginForm">
-        <el-form-item label="Имя пользователя">
-          <el-input v-model="loginForm.username" placeholder="Введите имя пользователя" :disabled="loading" />
-        </el-form-item>
+      <el-progress v-if="userStore.loading" indeterminate />
 
-        <el-form-item label="Пароль">
-          <el-input v-model="loginForm.password" type="password" placeholder="Введите пароль" :disabled="loading" show-password />
-        </el-form-item>
+      <div v-else-if="userStore.user">
+        <el-descriptions :column="1" border>
+          <el-descriptions-item label="Имя пользователя">
+            {{ userStore.user.username }}
+          </el-descriptions-item>
+          <el-descriptions-item label="Email">
+            {{ userStore.user.email }}
+          </el-descriptions-item>
+        </el-descriptions>
 
-        <el-button type="primary" native-type="submit" :loading="loading" style="width: 100%">
-          Войти
+        <el-button type="danger" class="mt" @click="handleLogout" block>
+          Выход
         </el-button>
+      </div>
+    </el-card>
+  </el-container>
 
-        <el-alert v-if="error" :title="error" type="error" :closable="false" style="margin-top: 15px" />
-      </el-form>
+  <el-container class="full-screen" v-else>
+    <el-card class="login-card" shadow="always">
+      <el-form @submit.prevent="handleLogin">
+        <h2 class="title">Вход в систему</h2>
 
-      <el-form v-else @submit.prevent="handleOtpVerify" :model="otpForm">
-        <el-alert title="Введите код из Google Authenticator" type="info" :closable="false" style="margin-bottom: 20px">
-          <template #default>
-            <p style="margin: 5px 0 0 0; font-size: 0.9em">{{ userStore.user?.email }}</p>
-          </template>
-        </el-alert>
-
-        <div v-if="qrCodeImage" class="text-center" style="margin-bottom: 20px;">
-          <img :src="qrCodeImage" alt="QR Code" style="max-width: 100%; height: auto; border-radius: 8px;">
-          <div style="margin-top: 10px; font-size: 0.85em; color: #666;">
-            Отсканируйте QR-код в Google Authenticator
-          </div>
-          <div style="margin-top: 10px;">
-            <div style="font-size: 0.85em; color: #666;">Или введите ключ вручную:</div>
-            <div style="margin-top: 5px; word-break: break-all; font-family: monospace; font-size: 11px; background: #f5f5f5; padding: 8px; border-radius: 4px;">
-              {{ totpKey }}
-            </div>
-          </div>
-        </div>
-
-        <el-form-item label="OTP код">
-          <el-input v-model="otpForm.code" placeholder="6-значный код" maxlength="6" :disabled="loading" style="text-align: center; font-size: 1.2em; letter-spacing: 4px" />
+        <el-form-item>
+          <el-input
+            v-model="username"
+            placeholder="Имя пользователя"
+            clearable
+            autocomplete="username"
+            size="large"
+          />
         </el-form-item>
 
-        <div style="display: flex; justify-content: space-between;">
-          <el-button type="primary" native-type="submit" :loading="loading" style="width: 48%">Подтвердить</el-button>
-          <el-button @click="resetLogin" style="width: 48%">Назад</el-button>
-        </div>
+        <el-form-item>
+          <el-input
+            v-model="password"
+            type="password"
+            placeholder="Пароль"
+            show-password
+            clearable
+            autocomplete="current-password"
+            size="large"
+          />
+        </el-form-item>
 
-        <el-alert v-if="error" :title="error" type="error" :closable="false" style="margin-top: 15px" />
+        <el-form-item class="actions">
+          <el-button
+            type="primary"
+            :loading="userStore.loading"
+            block
+            size="large"
+            native-type="submit"
+          >
+            Войти
+          </el-button>
+        </el-form-item>
+
+        <el-alert
+          v-if="userStore.error"
+          title="Ошибка"
+          type="error"
+          show-icon
+          class="alert"
+        />
       </el-form>
     </el-card>
-  </div>
+  </el-container>
 </template>
 
+
 <style scoped>
-.login-page {
+.full-screen {
+  min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
-  background: #f5f5f5;
 }
 
 .login-card {
   width: 100%;
-  max-width: 400px;
+  max-width: 480px;
+  padding: 32px 28px;
 }
 
-.card-header {
+.profile-card {
+  width: 100%;
+  max-width: 600px;
+}
+
+.title {
   text-align: center;
+  margin-bottom: 28px;
 }
 
-.card-header h2 {
-  margin: 0;
-  font-weight: 700;
-  color: #333;
+.actions {
+  margin-top: 20px;
 }
+
+.alert {
+  margin-top: 20px;
+}
+
+.mt {
+  margin-top: 20px;
+}
+
 </style>

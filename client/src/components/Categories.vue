@@ -1,5 +1,5 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
 import { useUserStore } from '../stores/userStore'
@@ -7,8 +7,9 @@ import { useUserStore } from '../stores/userStore'
 const userStore = useUserStore()
 const categories = ref([])
 const categoryStats = ref(null)
-const toAdd = reactive({ name: '' })
-const toEdit = reactive({ id: null, name: '' })
+const toAddName = ref('')
+const toEditId = ref(null)
+const toEditName = ref('')
 const filterName = ref('')
 const editVisible = ref(false)
 
@@ -30,8 +31,8 @@ async function loadData() {
 }
 
 async function onAdd() {
-  await axios.post('/categories/', { ...toAdd })
-  toAdd.name = ''
+  await axios.post('/categories/', { name: toAddName.value })
+  toAddName.value = ''
   await loadData()
   ElMessage.success('Категория добавлена')
 }
@@ -43,13 +44,13 @@ async function onRemove(c) {
 }
 
 function openEdit(c) {
-  toEdit.id = c.id
-  toEdit.name = c.name
+  toEditId.value = c.id
+  toEditName.value = c.name
   editVisible.value = true
 }
 
 async function saveForm() {
-  await axios.put(`/categories/${toEdit.id}/`, { name: toEdit.name })
+  await axios.put(`/categories/${toEditId.value}/`, { name: toEditName.value })
   await loadData()
   editVisible.value = false
   ElMessage.success('Категория обновлена')
@@ -93,7 +94,7 @@ onMounted(async () => {
     <el-card v-if="isAdmin">
       <h3>Добавить категорию</h3>
       <el-form @submit.prevent="onAdd">
-        <el-input v-model="toAdd.name" placeholder="Название категории" />
+        <el-input v-model="toAddName" placeholder="Название категории" />
         <el-button type="primary" native-type="submit" style="margin-top: 10px;">Добавить</el-button>
       </el-form>
     </el-card>
@@ -114,7 +115,7 @@ onMounted(async () => {
     <el-dialog v-model="editVisible" title="Редактировать">
       <el-form>
         <el-form-item label="Название">
-          <el-input v-model="toEdit.name" />
+          <el-input v-model="toEditName" />
         </el-form-item>
       </el-form>
       <template #footer>
