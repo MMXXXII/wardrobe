@@ -1,19 +1,39 @@
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '../stores/userStore'
 
 const userStore = useUserStore()
+
 const products = ref([])
 const categories = ref([])
 const stores = ref([])
 const productStats = ref(null)
-const toAdd = reactive({ name: '', category: '', store: '', size: 'M', price: 0, color: '', quantity: 0, image: null })
-const toEdit = reactive({ id: null, name: '', category: '', store: '', size: 'M', price: 0, color: '', quantity: 0, image: null })
+
 const filterName = ref('')
 const filterCategory = ref('')
+
 const editVisible = ref(false)
+
+const addName = ref('')
+const addCategory = ref('')
+const addStore = ref('')
+const addSize = ref('M')
+const addPrice = ref(0)
+const addColor = ref('')
+const addQuantity = ref(0)
+const addImage = ref(null)
+
+const editId = ref(null)
+const editName = ref('')
+const editCategory = ref('')
+const editStore = ref('')
+const editSize = ref('M')
+const editPrice = ref(0)
+const editColor = ref('')
+const editQuantity = ref(0)
+const editImage = ref(null)
 
 const isAdmin = computed(() => userStore.isSuperUser)
 
@@ -24,21 +44,27 @@ const filteredProducts = computed(() => {
   )
 })
 
-function onFileChange(file) {
-  toAdd.image = file.raw
+function onAddFile(file) {
+  addImage.value = file.raw
 }
 
-function onFileChangeEdit(file) {
-  toEdit.image = file.raw
+function onEditFile(file) {
+  editImage.value = file.raw
 }
 
-async function fetchUserInfo() {
+async function fetchUser() {
   await userStore.fetchUserInfo()
 }
 
-async function fetchAll() {
+async function fetchProducts() {
   products.value = (await axios.get('/products/')).data
+}
+
+async function fetchCategories() {
   categories.value = (await axios.get('/categories/')).data
+}
+
+async function fetchStores() {
   stores.value = (await axios.get('/stores/')).data
 }
 
@@ -46,261 +72,203 @@ async function fetchStats() {
   productStats.value = (await axios.get('/products/stats/')).data
 }
 
-async function onAdd() {
-  const formData = new FormData()
-  formData.append('name', toAdd.name)
-  formData.append('category', toAdd.category)
-  formData.append('store', toAdd.store)
-  formData.append('size', toAdd.size)
-  formData.append('price', toAdd.price)
-  formData.append('quantity', toAdd.quantity)
-  if (toAdd.color) {
-    formData.append('color', toAdd.color)
+async function loadAll() {
+  await fetchProducts()
+  await fetchCategories()
+  await fetchStores()
+  await fetchStats()
+}
+
+async function addProduct() {
+  const data = new FormData()
+
+  data.append('name', addName.value)
+  data.append('category', addCategory.value)
+  data.append('store', addStore.value)
+  data.append('size', addSize.value)
+  data.append('price', addPrice.value)
+  data.append('quantity', addQuantity.value)
+
+  if (addColor.value) {
+    data.append('color', addColor.value)
   }
-  if (toAdd.image) {
-    formData.append('image', toAdd.image)
+
+  if (addImage.value) {
+    data.append('image', addImage.value)
   }
 
-  await axios.post('/products/', formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  await axios.post('/products/', data)
 
-  toAdd.name = ''
-  toAdd.category = ''
-  toAdd.store = ''
-  toAdd.size = 'M'
-  toAdd.price = 0
-  toAdd.color = ''
-  toAdd.quantity = 0
-  toAdd.image = null
+  addName.value = ''
+  addCategory.value = ''
+  addStore.value = ''
+  addSize.value = 'M'
+  addPrice.value = 0
+  addColor.value = ''
+  addQuantity.value = 0
+  addImage.value = null
 
-  await Promise.all([fetchAll(), fetchStats()])
+  await loadAll()
   ElMessage.success('Товар добавлен')
 }
 
-async function onRemove(p) {
-  await axios.delete(`/products/${p.id}/`)
-  await Promise.all([fetchAll(), fetchStats()])
-  ElMessage.success('Товар удален')
-}
-
-function onEditClick(p) {
-  toEdit.id = p.id
-  toEdit.name = p.name
-  toEdit.category = p.category
-  toEdit.store = p.store
-  toEdit.size = p.size
-  toEdit.price = p.price
-  toEdit.color = p.color
-  toEdit.quantity = p.quantity
-  toEdit.image = null
+function openEdit(p) {
+  editId.value = p.id
+  editName.value = p.name
+  editCategory.value = p.category
+  editStore.value = p.store
+  editSize.value = p.size
+  editPrice.value = p.price
+  editColor.value = p.color
+  editQuantity.value = p.quantity
+  editImage.value = null
   editVisible.value = true
 }
 
-async function onUpdate() {
-  const formData = new FormData()
-  formData.append('name', toEdit.name)
-  formData.append('category', toEdit.category)
-  formData.append('store', toEdit.store)
-  formData.append('size', toEdit.size)
-  formData.append('price', toEdit.price)
-  formData.append('quantity', toEdit.quantity)
-  if (toEdit.color) {
-    formData.append('color', toEdit.color)
-  }
-  if (toEdit.image) {
-    formData.append('image', toEdit.image)
+async function updateProduct() {
+  const data = new FormData()
+
+  data.append('name', editName.value)
+  data.append('category', editCategory.value)
+  data.append('store', editStore.value)
+  data.append('size', editSize.value)
+  data.append('price', editPrice.value)
+  data.append('quantity', editQuantity.value)
+
+  if (editColor.value) {
+    data.append('color', editColor.value)
   }
 
-  await axios.put(`/products/${toEdit.id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } })
+  if (editImage.value) {
+    data.append('image', editImage.value)
+  }
 
-  await Promise.all([fetchAll(), fetchStats()])
+  await axios.put(`/products/${editId.value}/`, data)
+
   editVisible.value = false
+  await loadAll()
   ElMessage.success('Товар обновлен')
 }
 
-async function exportData(format) {
+async function removeProduct(p) {
+  await axios.delete(`/products/${p.id}/`)
+  await loadAll()
+  ElMessage.success('Товар удален')
+}
+
+async function exportFile() {
   if (!isAdmin.value) {
-    ElMessage.error('Только администратор может экспортировать данные')
+    ElMessage.error('Нет доступа')
     return
   }
 
-  const response = await axios.get(`/products/export/?type=${format}`, { responseType: 'blob' })
+  const response = await axios.get('/products/export/?type=excel', {
+    responseType: 'blob'
+  })
+
   const blob = response.data
   const link = document.createElement('a')
+
   link.href = URL.createObjectURL(blob)
-  link.download = `Products.${format === 'excel' ? 'xlsx' : 'docx'}`
+  link.download = 'Products.xlsx'
   link.click()
 }
 
 onMounted(async () => {
-  await fetchUserInfo()
-  await Promise.all([fetchAll(), fetchStats()])
+  await fetchUser()
+  await loadAll()
 })
 </script>
 
 <template>
-  <div class="page">
-    <el-header>
-      <h1>Товары</h1>
-    </el-header>
+  <div>
+    <h1>Товары</h1>
 
-    <el-card v-if="productStats">
-      <el-row :gutter="20">
-        <el-col :span="8">
-          <el-statistic title="Всего товаров" :value="productStats.count || 0" />
-        </el-col>
-        <el-col :span="8">
-          <el-statistic title="Средняя цена" :value="productStats.avg_price || 0" suffix="₽" />
-        </el-col>
-      </el-row>
-    </el-card>
+    <div v-if="productStats">
+      <div>Всего: {{ productStats.count }}</div>
+      <div>Средняя цена: {{ productStats.avg_price }} ₽</div>
+    </div>
 
-    <el-card v-if="isAdmin">
-      <h3>Экспорт</h3>
-      <el-button type="primary" @click="exportData('excel')">Экспорт в Excel</el-button>
-      <el-button type="primary" @click="exportData('word')" style="margin-left: 10px;">Экспорт в Word</el-button>
-    </el-card>
+    <div v-if="isAdmin">
+      <el-button type="primary" @click="exportFile">
+        Экспорт в Excel
+      </el-button>
+    </div>
 
-    <el-card v-if="isAdmin">
+
+    <div v-if="isAdmin">
       <h3>Добавить товар</h3>
-      <el-form @submit.prevent="onAdd">
-        <el-input v-model="toAdd.name" placeholder="Название" style="margin-bottom: 10px;" />
-        <el-select v-model="toAdd.category" placeholder="Категория" style="width: 100%; margin-bottom: 10px;">
+
+      <el-form @submit.prevent="addProduct">
+        <el-input v-model="addName" placeholder="Название" />
+        <el-select v-model="addCategory">
           <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
         </el-select>
-        <el-select v-model="toAdd.store" placeholder="Магазин" style="width: 100%; margin-bottom: 10px;">
+        <el-select v-model="addStore">
           <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
         </el-select>
-        <el-input v-model="toAdd.color" placeholder="Цвет" style="margin-bottom: 10px;" />
-        <el-select v-model="toAdd.size" placeholder="Размер" style="width: 100%; margin-bottom: 10px;">
+        <el-input v-model="addColor" placeholder="Цвет" />
+        <el-select v-model="addSize">
           <el-option label="XS" value="XS" />
           <el-option label="S" value="S" />
           <el-option label="M" value="M" />
           <el-option label="L" value="L" />
           <el-option label="XL" value="XL" />
-          <el-option label="XXL" value="XXL" />
         </el-select>
-
-        <el-row :gutter="20" style="margin-bottom: 10px;">
-          <el-col :span="12">
-            <el-input-number v-model="toAdd.price" :min="0" placeholder="Цена" style="width: 100%;" />
-          </el-col>
-          <el-col :span="12">
-            <el-input-number v-model="toAdd.quantity" :min="0" placeholder="Количество" style="width: 100%;" />
-          </el-col>
-        </el-row>
-
-        <el-upload :auto-upload="false" :limit="1" :on-change="onFileChange" accept="image/*"
-          style="margin-bottom: 10px;">
-          <el-button>Загрузить фото</el-button>
+        <el-input-number v-model="addPrice" :min="0" />
+        <el-input-number v-model="addQuantity" :min="0" />
+        <el-upload :auto-upload="false" :limit="1" :on-change="onAddFile">
+          <el-button>Фото</el-button>
         </el-upload>
-        <el-button type="primary" native-type="submit">Добавить товар</el-button>
+        <el-button type="primary" native-type="submit">Добавить</el-button>
       </el-form>
-    </el-card>
+    </div>
 
-    <el-input v-model="filterName" placeholder="Поиск..." style="margin: 20px 0;" />
-    <el-select v-model="filterCategory" placeholder="Все категории" style="margin: 0 10px 20px 0; width: 200px;">
-      <el-option label="Все категории" value="" />
+    <el-input v-model="filterName" placeholder="Поиск" />
+    <el-select v-model="filterCategory">
+      <el-option label="Все" value="" />
       <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
     </el-select>
 
-    <el-table :data="filteredProducts" stripe>
+    <el-table :data="filteredProducts">
       <el-table-column prop="name" label="Название" />
       <el-table-column prop="category_name" label="Категория" />
       <el-table-column prop="store_name" label="Магазин" />
-      <el-table-column prop="size" label="Размер" />
       <el-table-column prop="price" label="Цена" />
-      <el-table-column prop="color" label="Цвет" />
       <el-table-column prop="quantity" label="Количество" />
-      <el-table-column label="Фото" width="100">
-        <template #default="{ row }">
-          <el-image v-if="row.image" :src="row.image" style="width: 50px; height: 50px;" fit="cover" />
-        </template>
-      </el-table-column>
-      <el-table-column label="Действия" width="120" v-if="isAdmin">
-        <template #default="{ row }">
-          <div class="actions-column">
-            <el-button size="small" @click="onEditClick(row)" class="action-btn">Изменить</el-button>
-          </div>
-          <div class="actions-column">
-            <el-button size="small" type="danger" @click="onRemove(row)" class="action-btn">Удалить</el-button>
-          </div>
-        </template>
+      <el-table-column v-if="isAdmin" label="Действия" #default="{ row }">
+        <el-button size="small" @click="openEdit(row)">Изменить</el-button>
+        <el-button size="small" type="danger" @click="removeProduct(row)">Удалить</el-button>
       </el-table-column>
     </el-table>
 
+
     <el-dialog v-model="editVisible" title="Редактировать">
       <el-form>
-        <el-form-item label="Название">
-          <el-input v-model="toEdit.name" />
-        </el-form-item>
-        <el-form-item label="Категория">
-          <el-select v-model="toEdit.category" style="width: 100%;">
-            <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Магазин">
-          <el-select v-model="toEdit.store" style="width: 100%;">
-            <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Цвет">
-          <el-input v-model="toEdit.color" />
-        </el-form-item>
-        <el-form-item label="Размер">
-          <el-select v-model="toEdit.size" style="width: 100%;">
-            <el-option label="XS" value="XS" />
-            <el-option label="S" value="S" />
-            <el-option label="M" value="M" />
-            <el-option label="L" value="L" />
-            <el-option label="XL" value="XL" />
-            <el-option label="XXL" value="XXL" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="Цена">
-          <el-input-number v-model="toEdit.price" :min="0" style="width: 100%;" />
-        </el-form-item>
-        <el-form-item label="Количество">
-          <el-input-number v-model="toEdit.quantity" :min="0" style="width: 100%;" />
-        </el-form-item>
-        <el-form-item label="Фото">
-          <el-upload :auto-upload="false" :limit="1" :on-change="onFileChangeEdit" accept="image/*">
-            <el-button>Загрузить фото</el-button>
-          </el-upload>
-        </el-form-item>
+        <el-input v-model="editName" />
+        <el-select v-model="editCategory">
+          <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
+        </el-select>
+        <el-select v-model="editStore">
+          <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
+        </el-select>
+        <el-input v-model="editColor" />
+        <el-select v-model="editSize">
+          <el-option label="XS" value="XS" />
+          <el-option label="S" value="S" />
+          <el-option label="M" value="M" />
+          <el-option label="L" value="L" />
+          <el-option label="XL" value="XL" />
+        </el-select>
+        <el-input-number v-model="editPrice" :min="0" />
+        <el-input-number v-model="editQuantity" :min="0" />
+        <el-upload :auto-upload="false" :limit="1" :on-change="onEditFile">
+          <el-button>Фото</el-button>
+        </el-upload>
       </el-form>
-      <template #footer>
-        <el-button @click="editVisible = false">Отмена</el-button>
-        <el-button type="primary" @click="onUpdate">Сохранить</el-button>
-      </template>
+
+      <el-button @click="editVisible = false">Отмена</el-button>
+      <el-button type="primary" @click="updateProduct">Сохранить</el-button>
     </el-dialog>
   </div>
 </template>
-
-<style scoped>
-.page {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-h1 {
-  margin-bottom: 20px;
-}
-
-.el-card {
-  margin-bottom: 20px;
-}
-
-.actions-column {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
-  margin-bottom: 5px;
-}
-
-.action-btn {
-  width: auto;
-  width: 100px;
-}
-</style>
