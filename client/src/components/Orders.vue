@@ -1,7 +1,6 @@
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
-import QRCode from 'qrcode'
 import { ElMessage } from 'element-plus'
 import { useUserStore } from '../stores/userStore'
 
@@ -16,39 +15,35 @@ const filterStatus = ref('')
 const addStore = ref(null)
 const addProduct = ref(null)
 const addQuantity = ref(1)
-const addDate = ref('')
+const addDate = ref(null)
 
 const editVisible = ref(false)
 const editId = ref(null)
 const editStore = ref(null)
 const editProduct = ref(null)
 const editQuantity = ref(1)
-const editDate = ref('')
+const editDate = ref(null)
 const editStatus = ref('pending')
-
-const showOtpDialog = ref(false)
-const qrDataUrl = ref('')
-const totpCode = ref('')
-const totpError = ref(false)
-const pendingOrder = ref(null)
 
 const isAdmin = computed(() => userStore.isSuperUser)
 
-const filteredOrders = computed(() => {
-  return orders.value.filter(o => !filterStatus.value || o.status === filterStatus.value)
-})
+const filteredOrders = computed(() =>
+  orders.value.filter(o => !filterStatus.value || o.status === filterStatus.value)
+)
 
 watch(addStore, () => {
   addProduct.value = null
 })
 
-const productsForAdd = computed(() => {
-  return products.value.filter(p => Number(p.store) === Number(addStore.value))
-})
+const productsForAdd = computed(() =>
+  products.value.filter(p => p.store === addStore.value)
+)
 
-const productsForEdit = computed(() => {
-  return editStore.value ? products.value.filter(p => Number(p.store) === Number(editStore.value)) : []
-})
+const productsForEdit = computed(() =>
+  editStore.value
+    ? products.value.filter(p => p.store === editStore.value)
+    : []
+)
 
 async function loadAll() {
   orders.value = (await axios.get('/orders/')).data
@@ -57,12 +52,13 @@ async function loadAll() {
   stats.value = (await axios.get('/orders/stats/')).data
 }
 
-async function buildQr(url) {
-  qrDataUrl.value = url ? await QRCode.toDataURL(url, { width: 220, margin: 1 }) : ''
-}
-
 async function addOrder() {
-  const product = products.value.find(p => Number(p.id) === Number(addProduct.value))
+  if (!addStore.value || !addProduct.value) {
+    ElMessage.error('Заполните магазин и товар')
+    return
+  }
+
+  const product = products.value.find(p => p.id === addProduct.value)
   if (!product) {
     ElMessage.error('Товар не найден')
     return
@@ -73,43 +69,21 @@ async function addOrder() {
     return
   }
 
-  pendingOrder.value = {
+  await axios.post('/orders/', {
     store: addStore.value,
     product: addProduct.value,
     quantity: addQuantity.value,
-    order_date: addDate.value ? new Date(addDate.value).toISOString().split('T')[0] : new Date().toISOString().split('T')[0]
-  }
-
-  totpCode.value = ''
-  totpError.value = false
-  showOtpDialog.value = true
-
-  const url = await userStore.getTotp()
-  await buildQr(url)
-}
-
-async function confirmOtp() {
-  const ok = await userStore.verifyOtp(totpCode.value)
-  if (!ok) {
-    totpError.value = true
-    totpCode.value = ''
-    return
-  }
-
-  userStore.isOtpVerified = true
-  await axios.post('/orders/', pendingOrder.value)
-
-  showOtpDialog.value = false
-  pendingOrder.value = null
+    order_date: normalizeDate(addDate.value)
+  })
 
   addStore.value = null
   addProduct.value = null
   addQuantity.value = 1
-  addDate.value = ''
+  addDate.value = null
 
   await loadAll()
-  ElMessage.success('Заказ добавлен')
 }
+
 
 function openEdit(o) {
   editId.value = o.order_id
@@ -122,7 +96,7 @@ function openEdit(o) {
 }
 
 async function updateOrder() {
-  const product = products.value.find(p => Number(p.id) === Number(editProduct.value))
+  const product = products.value.find(p => p.id === editProduct.value)
   if (!product) {
     ElMessage.error('Товар не найден')
     return
@@ -158,23 +132,22 @@ async function exportFile() {
     return
   }
 
-  const response = await axios.get('/orders/export/?type=excel', {
+  const res = await axios.get('/orders/export/?type=excel', {
     responseType: 'blob'
   })
 
-  const blob = response.data
   const link = document.createElement('a')
-  link.href = URL.createObjectURL(blob)
+  link.href = URL.createObjectURL(res.data)
   link.download = 'Orders.xlsx'
   link.click()
 }
-
 
 onMounted(async () => {
   await userStore.fetchUserInfo()
   await loadAll()
 })
 </script>
+
 
 <template>
   <div>
@@ -254,19 +227,6 @@ onMounted(async () => {
 
       <el-button @click="editVisible = false">Отмена</el-button>
       <el-button type="primary" @click="updateOrder">Сохранить</el-button>
-    </el-dialog>
-
-    <el-dialog v-model="showOtpDialog" title="2FA подтверждение">
-      <div>
-        <img v-if="qrDataUrl" :src="qrDataUrl" />
-      </div>
-
-      <el-input v-model="totpCode" maxlength="6" placeholder="Код из приложения" />
-
-      <div v-if="totpError">Неверный код</div>
-
-      <el-button @click="showOtpDialog = false">Отмена</el-button>
-      <el-button type="primary" @click="confirmOtp">Подтвердить</el-button>
     </el-dialog>
   </div>
 </template>
